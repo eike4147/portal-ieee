@@ -3,7 +3,11 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
-export async function toggleSalaAction(novoStatus: 'Aberta' | 'Fechada', observacao?: string) {
+export async function toggleSalaAction(
+  novoStatus: 'Aberta' | 'Fechada',
+  observacao?: string,
+  novoResponsavelId?: string
+) {
   const supabase = await createClient()
 
   const {
@@ -14,7 +18,7 @@ export async function toggleSalaAction(novoStatus: 'Aberta' | 'Fechada', observa
     return { error: 'Usuário não autenticado.' }
   }
 
-  // Verifica permissão do usuário
+  // Verifica permissão do usuário que está executando a ação
   const { data: usuarioCargos } = await supabase
     .from('usuario_cargos')
     .select('cargos (permite_abrir_sala, nivel_acesso)')
@@ -22,15 +26,21 @@ export async function toggleSalaAction(novoStatus: 'Aberta' | 'Fechada', observa
 
   const temPermissao = usuarioCargos?.some((item: any) => {
     const c = item.cargos
-    return c?.permite_abrir_sala || ['Admin', 'Gestor', 'Lider'].includes(c?.nivel_acesso)
+    return (
+      c?.permite_abrir_sala ||
+      ['Admin', 'Gestor', 'Lider', 'Diretoria', 'Lideranca'].includes(c?.nivel_acesso)
+    )
   })
 
   if (!temPermissao) {
     return { error: 'Você não possui permissão de cargo para alterar o status da sala.' }
   }
 
+  // Define quem será gravado como responsável
+  const responsavelAlvo = novoResponsavelId || user.id
+
   const { error } = await supabase.from('log_sala').insert({
-    responsavel_id: user.id,
+    responsavel_id: responsavelAlvo,
     status: novoStatus,
     observacao: observacao || null,
   })

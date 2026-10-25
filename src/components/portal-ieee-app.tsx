@@ -13,9 +13,17 @@ interface UsuarioProps {
   podeGerenciarSala: boolean
 }
 
+export interface MembroElegivelSala {
+  id: string
+  nome: string
+  matricula: string
+  cargo: string
+}
+
 interface StatusSalaProps {
   aberta: boolean
   ultimoResponsavel: string
+  ultimoResponsavelId?: string | null
   dataHora: string | null
 }
 
@@ -31,10 +39,12 @@ export default function PortalIEEEApp({
   usuario,
   statusSala,
   historicoSala,
+  usuariosElegiveisSala = [],
 }: {
   usuario: UsuarioProps
   statusSala: StatusSalaProps
   historicoSala: LogSalaProps[]
+  usuariosElegiveisSala?: MembroElegivelSala[]
 }) {
   // Estado de navegação principal
   const [activeTab, setActiveTab] = useState<'calendario' | 'disponibilidade' | 'equipe' | 'admin' | 'perfil'>('calendario')
@@ -54,6 +64,16 @@ export default function PortalIEEEApp({
   const [modalFichaAberto, setModalFichaAberto] = useState(false)
   const [membroFicha, setMembroFicha] = useState<any>(null)
   const [banner24hVisivel, setBanner24hVisivel] = useState(true)
+
+  // Estados do Controle da Sala (Passar, Assumir e Checklist)
+  const [modoAcaoSala, setModoAcaoSala] = useState<'inicial' | 'checklist_fechar' | 'passar_busca' | 'passar_confirmar'>('inicial')
+  const [membroTransferencia, setMembroTransferencia] = useState<MembroElegivelSala | null>(null)
+  const [termoBuscaPassar, setTermoBuscaPassar] = useState('')
+  const [checklistFechamento, setChecklistFechamento] = useState({
+    ar: false,
+    luzes: false,
+    computadores: false,
+  })
 
   // Estado do Simulador de Superusuário
   const [papelSimulado, setPapelSimulado] = useState<string>('Admin (Real)')
@@ -151,19 +171,52 @@ export default function PortalIEEEApp({
     '19:00 - 20:00', '20:00 - 21:00', '21:00 - 22:00',
   ]
 
-  // Função para executar abertura / fechamento da sala
-  const handleToggleSala = (novoStatus: 'Aberta' | 'Fechada') => {
+  // Lista unificada para busca ao passar a sala (membros do banco + líderes de demonstração)
+  const listaMembrosParaTransferencia: MembroElegivelSala[] = [
+    ...usuariosElegiveisSala,
+    ...[
+      { id: 'mock-1', nome: 'Ana Clara Souza', matricula: '2323101GADM', cargo: 'Diretora de GP' },
+      { id: 'mock-2', nome: 'Lucas Medeiros', matricula: '2323102GADM', cargo: 'Capitão WolfBotz' },
+      { id: 'mock-3', nome: 'Beatriz Lima', matricula: '2323103GADM', cargo: 'Assessora de Projetos' },
+      { id: 'mock-4', nome: 'Matheus Ribeiro', matricula: '2323104GADM', cargo: 'Coordenador WolfBytes' },
+    ].filter(
+      (m) =>
+        m.nome !== usuario.nome &&
+        !usuariosElegiveisSala.some((u) => u.nome === m.nome || u.matricula === m.matricula)
+    ),
+  ]
+
+  // Função para executar abertura / fechamento / transferência da sala
+  const handleToggleSala = (
+    novoStatus: 'Aberta' | 'Fechada',
+    observacaoCustom?: string,
+    novoResponsavelId?: string
+  ) => {
     setFeedbackSala(null)
     startTransition(async () => {
-      const res = await toggleSalaAction(novoStatus, observacaoSala)
+      const obsFinal =
+        observacaoCustom ||
+        observacaoSala ||
+        (novoStatus === 'Aberta' ? 'Abriu a sala' : 'Fechou a sala')
+      const res = await toggleSalaAction(novoStatus, obsFinal, novoResponsavelId)
       if (res?.error) {
         setFeedbackSala({ tipo: 'erro', msg: res.error })
       } else {
+        const msgSucesso =
+          novoStatus === 'Aberta'
+            ? novoResponsavelId && novoResponsavelId !== usuario.id
+              ? 'Transferência realizada com sucesso!\n\n🔑 Senha da porta: 73684134'
+              : 'Sala aberta com sucesso!\n\n🔑 Senha da porta: 73684134'
+            : 'A sala foi trancada com segurança.'
+
         setFeedbackSala({
           tipo: 'ok',
-          msg: novoStatus === 'Aberta' ? 'Sala aberta com sucesso!' : 'Sala fechada com sucesso!',
+          msg: msgSucesso,
         })
         setObservacaoSala('')
+        setModoAcaoSala('inicial')
+        setChecklistFechamento({ ar: false, luzes: false, computadores: false })
+        setMembroTransferencia(null)
       }
     })
   }
@@ -1435,45 +1488,301 @@ export default function PortalIEEEApp({
                 </div>
               )}
 
-              {/* AÇÕES DE GESTÃO DA SALA */}
+              {/* AÇÕES DE GESTÃO DA SALA (INDEX.HTML COMPLETO) */}
               {usuario.podeGerenciarSala ? (
-                <div className="space-y-3 pt-2 border-t border-gray-100">
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-400 uppercase ml-1 block mb-1">
-                      Observação / Atividade (Opcional):
-                    </label>
-                    <input
-                      type="text"
-                      value={observacaoSala}
-                      onChange={(e) => setObservacaoSala(e.target.value)}
-                      placeholder="Ex: Reunião do WolfBotz ou Estudo em grupo"
-                      className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs outline-none focus:ring-2 focus:ring-primary"
-                    />
-                  </div>
+                <div className="pt-2 border-t border-gray-100">
+                  {/* QUANDO A SALA ESTÁ FECHADA */}
+                  {!statusSala.aberta && (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase ml-1 block mb-1">
+                          Observação / Atividade (Opcional):
+                        </label>
+                        <input
+                          type="text"
+                          value={observacaoSala}
+                          onChange={(e) => setObservacaoSala(e.target.value)}
+                          placeholder="Ex: Reunião do WolfBotz ou Estudo em grupo"
+                          className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs outline-none focus:ring-2 focus:ring-primary"
+                        />
+                      </div>
 
-                  <div className="flex gap-2">
-                    {statusSala.aberta ? (
                       <button
                         type="button"
                         disabled={isPending}
-                        onClick={() => handleToggleSala('Fechada')}
-                        className="flex-1 py-3.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs shadow-md transition-all active:scale-95 disabled:opacity-60 flex items-center justify-center gap-1.5 cursor-pointer"
+                        onClick={() => handleToggleSala('Aberta', observacaoSala || 'Abriu a sala')}
+                        className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-md transition-all active:scale-95 disabled:opacity-60 flex items-center justify-center gap-1.5 cursor-pointer"
                       >
-                        <span className="material-symbols-outlined text-sm">lock</span>
-                        <span>{isPending ? 'Fechando...' : 'Fechar Sala'}</span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={isPending}
-                        onClick={() => handleToggleSala('Aberta')}
-                        className="flex-1 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-md transition-all active:scale-95 disabled:opacity-60 flex items-center justify-center gap-1.5 cursor-pointer"
-                      >
-                        <span className="material-symbols-outlined text-sm">lock_open</span>
+                        <span className="material-symbols-outlined text-base">lock_open</span>
                         <span>{isPending ? 'Abrindo...' : 'Abrir Sala'}</span>
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  )}
+
+                  {/* QUANDO A SALA ESTÁ ABERTA: 1. AÇÕES INICIAIS */}
+                  {statusSala.aberta && modoAcaoSala === 'inicial' && (
+                    <div className="flex flex-col gap-2.5">
+                      {/* OPÇÃO 1: TOMAR A SALA ("Eu assumo a sala" se outro membro for o titular) */}
+                      {statusSala.ultimoResponsavelId !== usuario.id && (
+                        <button
+                          type="button"
+                          disabled={isPending}
+                          onClick={() =>
+                            handleToggleSala(
+                              'Aberta',
+                              `Assumiu a responsabilidade da sala (estava com ${statusSala.ultimoResponsavel})`,
+                              usuario.id
+                            )
+                          }
+                          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl active:scale-95 transition-all shadow-md flex items-center justify-center gap-2 text-xs cursor-pointer disabled:opacity-60"
+                        >
+                          <span className="material-symbols-outlined text-base">person_add</span>
+                          <span>{isPending ? 'Gravando...' : 'Eu assumo a sala'}</span>
+                        </button>
+                      )}
+
+                      {/* OPÇÃO 2: PASSAR SALA (se o usuário for o titular ou Presidente/Admin) */}
+                      {(statusSala.ultimoResponsavelId === usuario.id ||
+                        usuario.cargos.includes('Presidente') ||
+                        papelSimulado === 'Admin') && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setModoAcaoSala('passar_busca')
+                            setTermoBuscaPassar('')
+                          }}
+                          className="w-full bg-blue-50 border border-blue-200 text-primary hover:bg-blue-100 font-bold py-3 rounded-xl active:scale-95 transition-all flex items-center justify-center gap-2 text-xs cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-base">swap_horiz</span>
+                          <span>Passar Sala</span>
+                        </button>
+                      )}
+
+                      {/* OPÇÃO 3: FECHAR SALA (Dispara o Checklist Obrigatório) */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setModoAcaoSala('checklist_fechar')
+                          setChecklistFechamento({ ar: false, luzes: false, computadores: false })
+                        }}
+                        className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3.5 rounded-xl shadow-md active:scale-95 transition-all flex items-center justify-center gap-2 text-xs cursor-pointer"
+                      >
+                        <span className="material-symbols-outlined text-base">lock</span>
+                        <span>Fechar Sala</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* QUANDO A SALA ESTÁ ABERTA: 2. CHECKLIST OBRIGATÓRIO DE FECHAMENTO */}
+                  {statusSala.aberta && modoAcaoSala === 'checklist_fechar' && (
+                    <div className="pt-3 border-t border-gray-200 bg-gray-50 -mx-6 -mb-6 p-6 rounded-b-3xl space-y-4">
+                      <p className="text-xs font-bold text-red-600 uppercase tracking-wider flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-[18px]">checklist</span>
+                        <span>Verifique antes de trancar:</span>
+                      </p>
+
+                      <div className="space-y-2 text-xs text-gray-700 font-medium">
+                        <label className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-200 cursor-pointer hover:bg-gray-100/70 transition-colors shadow-2xs">
+                          <input
+                            type="checkbox"
+                            checked={checklistFechamento.ar}
+                            onChange={(e) =>
+                              setChecklistFechamento((prev) => ({ ...prev, ar: e.target.checked }))
+                            }
+                            className="w-5 h-5 accent-red-600 rounded cursor-pointer"
+                          />
+                          <span className="font-semibold text-gray-800">Ar condicionado desligado</span>
+                        </label>
+
+                        <label className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-200 cursor-pointer hover:bg-gray-100/70 transition-colors shadow-2xs">
+                          <input
+                            type="checkbox"
+                            checked={checklistFechamento.luzes}
+                            onChange={(e) =>
+                              setChecklistFechamento((prev) => ({ ...prev, luzes: e.target.checked }))
+                            }
+                            className="w-5 h-5 accent-red-600 rounded cursor-pointer"
+                          />
+                          <span className="font-semibold text-gray-800">Luzes apagadas</span>
+                        </label>
+
+                        <label className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-200 cursor-pointer hover:bg-gray-100/70 transition-colors shadow-2xs">
+                          <input
+                            type="checkbox"
+                            checked={checklistFechamento.computadores}
+                            onChange={(e) =>
+                              setChecklistFechamento((prev) => ({
+                                ...prev,
+                                computadores: e.target.checked,
+                              }))
+                            }
+                            className="w-5 h-5 accent-red-600 rounded cursor-pointer"
+                          />
+                          <span className="font-semibold text-gray-800">
+                            Computadores e Equip. desligados
+                          </span>
+                        </label>
+                      </div>
+
+                      {/* Botão de trancar só habilita com os 3 checks */}
+                      {checklistFechamento.ar &&
+                      checklistFechamento.luzes &&
+                      checklistFechamento.computadores ? (
+                        <button
+                          type="button"
+                          disabled={isPending}
+                          onClick={() =>
+                            handleToggleSala(
+                              'Fechada',
+                              'Trancou a sala (Checklist verificado: ar condicionado desligado, luzes apagadas, equipamentos desligados)'
+                            )
+                          }
+                          className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded-xl shadow-md active:scale-95 transition-all text-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
+                        >
+                          <span className="material-symbols-outlined text-sm">lock</span>
+                          <span>{isPending ? 'Trancando...' : 'Trancar Sala Definitivamente'}</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled
+                          className="w-full bg-gray-300 text-gray-500 font-bold py-4 rounded-xl transition-all shadow-2xs cursor-not-allowed text-xs"
+                        >
+                          Preencha o checklist acima
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => setModoAcaoSala('inicial')}
+                        className="w-full text-gray-500 hover:text-gray-700 font-bold py-2 text-xs transition-colors cursor-pointer"
+                      >
+                        Voltar
+                      </button>
+                    </div>
+                  )}
+
+                  {/* QUANDO A SALA ESTÁ ABERTA: 3. BUSCA DE LÍDER PARA PASSAR A SALA */}
+                  {statusSala.aberta && modoAcaoSala === 'passar_busca' && (
+                    <div className="pt-3 border-t border-gray-200 bg-gray-50 -mx-6 -mb-6 p-6 rounded-b-3xl space-y-3">
+                      <p className="text-xs font-bold text-gray-600 uppercase tracking-wider">
+                        Buscar Líder para Transferência:
+                      </p>
+
+                      <div className="relative">
+                        <span className="material-symbols-outlined absolute left-3 top-2.5 text-gray-400 text-base">
+                          search
+                        </span>
+                        <input
+                          type="text"
+                          value={termoBuscaPassar}
+                          onChange={(e) => setTermoBuscaPassar(e.target.value)}
+                          placeholder="Digite o nome do líder..."
+                          className="w-full bg-white border border-gray-200 rounded-xl pl-9 pr-3 py-2.5 text-xs font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-primary shadow-2xs"
+                        />
+                      </div>
+
+                      {/* LISTA SUSPENSA DE LÍDERES */}
+                      <div className="bg-white border border-gray-200 rounded-xl max-h-48 overflow-y-auto shadow-sm custom-scrollbar divide-y divide-gray-50">
+                        {listaMembrosParaTransferencia.filter((m) =>
+                          m.nome.toLowerCase().includes(termoBuscaPassar.toLowerCase())
+                        ).length > 0 ? (
+                          listaMembrosParaTransferencia
+                            .filter((m) =>
+                              m.nome.toLowerCase().includes(termoBuscaPassar.toLowerCase())
+                            )
+                            .map((membro) => (
+                              <div
+                                key={membro.id}
+                                onClick={() => {
+                                  setMembroTransferencia(membro)
+                                  setModoAcaoSala('passar_confirmar')
+                                }}
+                                className="p-3 text-xs cursor-pointer hover:bg-blue-50 active:bg-blue-100 transition-colors flex items-center justify-between"
+                              >
+                                <div>
+                                  <p className="font-bold text-gray-800">{membro.nome}</p>
+                                  <p className="text-[10px] text-gray-400 uppercase font-bold mt-0.5">
+                                    {membro.cargo} • ID: {membro.matricula}
+                                  </p>
+                                </div>
+                                <span className="material-symbols-outlined text-primary text-base">
+                                  chevron_right
+                                </span>
+                              </div>
+                            ))
+                        ) : (
+                          <div className="p-4 text-xs text-gray-400 text-center font-medium">
+                            Nenhum líder encontrado com esse nome.
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setModoAcaoSala('inicial')}
+                        className="w-full text-gray-500 hover:text-gray-700 font-bold py-2 text-xs transition-colors cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  )}
+
+                  {/* QUANDO A SALA ESTÁ ABERTA: 4. CRACHÁ DE CONFIRMAÇÃO DE TRANSFERÊNCIA */}
+                  {statusSala.aberta && modoAcaoSala === 'passar_confirmar' && membroTransferencia && (
+                    <div className="pt-3 border-t border-gray-200 bg-gray-50 -mx-6 -mb-6 p-6 rounded-b-3xl space-y-3">
+                      <p className="text-xs font-bold text-primary uppercase tracking-wider">
+                        Confirme a transferência:
+                      </p>
+
+                      <div className="bg-white p-4 rounded-2xl border border-blue-200 shadow-2xs flex items-center gap-3">
+                        <div className="bg-blue-100 text-primary p-2.5 rounded-full flex items-center justify-center h-11 w-11 shrink-0">
+                          <span className="material-symbols-outlined text-xl">person_check</span>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-gray-400 uppercase font-bold leading-tight">
+                            {membroTransferencia.cargo}
+                          </p>
+                          <p className="font-bold text-gray-800 text-sm mt-0.5">
+                            {membroTransferencia.nome}
+                          </p>
+                          <p className="text-[10px] text-gray-400">ID: {membroTransferencia.matricula}</p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() =>
+                          handleToggleSala(
+                            'Aberta',
+                            `Recebeu a responsabilidade de ${usuario.nome}`,
+                            membroTransferencia.id
+                          )
+                        }
+                        className="w-full bg-primary hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl active:scale-95 transition-all shadow-md text-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
+                      >
+                        <span className="material-symbols-outlined text-sm">send</span>
+                        <span>{isPending ? 'Transferindo...' : 'Confirmar Transferência'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setModoAcaoSala('passar_busca')}
+                        className="w-full text-gray-600 font-bold py-2.5 text-xs border border-gray-200 rounded-xl bg-white hover:bg-gray-100 transition-colors cursor-pointer"
+                      >
+                        Escolher outra pessoa
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setModoAcaoSala('inicial')}
+                        className="w-full text-gray-400 hover:text-gray-600 font-bold py-1 text-xs transition-colors cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="p-3 bg-gray-50 rounded-xl text-center text-xs text-gray-500 font-medium">
