@@ -27,13 +27,38 @@ export async function toggleSalaAction(
   const temPermissao = usuarioCargos?.some((item: any) => {
     const c = item.cargos
     return (
-      c?.permite_abrir_sala ||
-      ['Admin', 'Gestor', 'Lider', 'Diretoria', 'Lideranca'].includes(c?.nivel_acesso)
+      c?.permite_abrir_sala === true ||
+      (c?.permite_abrir_sala !== false &&
+        ['Admin', 'Gestor', 'Lider', 'Diretoria', 'Lideranca'].includes(c?.nivel_acesso))
     )
   })
 
   if (!temPermissao) {
     return { error: 'Você não possui permissão de cargo para alterar o status da sala.' }
+  }
+
+  // Se estiver passando a responsabilidade da sala para outro usuário, valida se ele tem permissão de liderança
+  if (novoResponsavelId && novoResponsavelId !== user.id) {
+    const { data: destCargos } = await supabase
+      .from('usuario_cargos')
+      .select('cargos (permite_abrir_sala, nivel_acesso)')
+      .eq('usuario_id', novoResponsavelId)
+
+    const destTemPermissao = destCargos?.some((item: any) => {
+      const c = item.cargos
+      return (
+        c?.permite_abrir_sala === true ||
+        (c?.permite_abrir_sala !== false &&
+          ['Admin', 'Gestor', 'Lider', 'Diretoria', 'Lideranca'].includes(c?.nivel_acesso))
+      )
+    })
+
+    if (!destTemPermissao) {
+      return {
+        error:
+          'O membro selecionado não possui cargo de liderança com autorização para receber a responsabilidade da sala.',
+      }
+    }
   }
 
   // Define quem será gravado como responsável

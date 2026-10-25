@@ -221,6 +221,11 @@ export default function PortalIEEEApp({
     })
   }
 
+  // Permissão efetiva da sala considerando se o simulador está ativo
+  const podeGerenciarSalaEfetivo = simuladorAtivo
+    ? ['Admin', 'Diretoria', 'Lider'].includes(papelSimulado)
+    : usuario.podeGerenciarSala
+
   // Função para simular papéis
   const simularPapel = (papel: string) => {
     setPapelSimulado(papel)
@@ -358,6 +363,17 @@ export default function PortalIEEEApp({
           >
             <span className="material-symbols-outlined text-[20px]">help</span>
           </button>
+
+          {/* BOTÃO LOGOUT RÁPIDO PARA TESTAR OUTROS USUÁRIOS */}
+          <form action={logoutAction}>
+            <button
+              type="submit"
+              title="Sair / Trocar de Conta"
+              className="w-10 h-10 bg-red-50 text-red-600 hover:bg-red-100 rounded-full flex items-center justify-center transition-colors cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[19px]">logout</span>
+            </button>
+          </form>
         </div>
       </header>
 
@@ -1489,7 +1505,7 @@ export default function PortalIEEEApp({
               )}
 
               {/* AÇÕES DE GESTÃO DA SALA (INDEX.HTML COMPLETO) */}
-              {usuario.podeGerenciarSala ? (
+              {podeGerenciarSalaEfetivo ? (
                 <div className="pt-2 border-t border-gray-100">
                   {/* QUANDO A SALA ESTÁ FECHADA */}
                   {!statusSala.aberta && (
@@ -1785,8 +1801,16 @@ export default function PortalIEEEApp({
                   )}
                 </div>
               ) : (
-                <div className="p-3 bg-gray-50 rounded-xl text-center text-xs text-gray-500 font-medium">
-                  Seu cargo atual possui permissão apenas para visualização do status da sala.
+                <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-2xl text-center space-y-1.5 shadow-xs">
+                  <div className="w-9 h-9 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mx-auto shadow-inner">
+                    <span className="material-symbols-outlined text-lg">lock</span>
+                  </div>
+                  <p className="text-xs font-bold text-amber-900">Acesso Restrito: Apenas Visualização</p>
+                  <p className="text-[11px] text-amber-700 leading-relaxed font-medium">
+                    {simuladorAtivo
+                      ? `Modo Simulador (${papelSimulado}): este perfil possui apenas visualização do status da sala.`
+                      : `Seu cargo cadastrado (${usuario.cargos?.[0] || usuario.tipo_membro}) possui permissão apenas de visualização. Apenas membros em cargos de liderança ou diretoria podem abrir, fechar ou receber a sala.`}
+                  </p>
                 </div>
               )}
 

@@ -38,8 +38,9 @@ export default async function HomePage() {
   const cargos = perfil?.usuario_cargos?.map((uc: any) => uc.cargos) || []
   const podeGerenciarSala = cargos.some(
     (c: any) =>
-      c?.permite_abrir_sala ||
-      ['Admin', 'Gestor', 'Lider', 'Diretoria', 'Lideranca'].includes(c?.nivel_acesso)
+      c?.permite_abrir_sala === true ||
+      (c?.permite_abrir_sala !== false &&
+        ['Admin', 'Gestor', 'Lider', 'Diretoria', 'Lideranca'].includes(c?.nivel_acesso))
   )
 
   // 3. Busca o último registro de abertura/fechamento da sala (Status atual)
@@ -87,8 +88,9 @@ export default async function HomePage() {
       const cargosUser = u.usuario_cargos?.map((uc: any) => uc.cargos) || []
       return cargosUser.some(
         (c: any) =>
-          c?.permite_abrir_sala ||
-          ['Admin', 'Gestor', 'Lider', 'Diretoria', 'Lideranca'].includes(c?.nivel_acesso)
+          c?.permite_abrir_sala === true ||
+          (c?.permite_abrir_sala !== false &&
+            ['Admin', 'Gestor', 'Lider', 'Diretoria', 'Lideranca'].includes(c?.nivel_acesso))
       )
     })
     .map((u: any) => ({

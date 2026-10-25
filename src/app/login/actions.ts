@@ -51,7 +51,7 @@ export async function loginAction(
     return { error: 'Credenciais inválidas: ' + loginError.message }
   }
 
-  redirect('/sala')
+  redirect('/')
 }
 
 export async function cadastrarPilotoAction(
@@ -62,6 +62,7 @@ export async function cadastrarPilotoAction(
   const matricula = formData.get('matricula')?.toString().trim()
   const email = formData.get('email')?.toString().trim()
   const senha = formData.get('senha')?.toString()
+  const cargoId = formData.get('cargo_id')?.toString().trim() || 'PRES'
 
   if (!nome || !matricula || !email || !senha) {
     return { error: 'Preencha todos os campos.' }
@@ -85,6 +86,8 @@ export async function cadastrarPilotoAction(
     return { error: 'Erro ao criar conta no Supabase: ' + (authError?.message || 'Falha ao registrar.') }
   }
 
+  const ehTrainee = cargoId.toUpperCase().includes('TRAINEE')
+
   // 2. Insere/atualiza no perfil public.usuarios
   const { error: profileError } = await supabase.from('usuarios').upsert({
     id: authData.user.id,
@@ -92,23 +95,27 @@ export async function cadastrarPilotoAction(
     nome,
     email,
     status: 'Ativo',
-    tipo_membro: 'Membro',
+    tipo_membro: ehTrainee ? 'Trainee' : 'Membro',
   })
 
   if (profileError) {
     return { error: 'Erro ao registrar perfil: ' + profileError.message }
   }
 
-  // 3. Atribui cargo de Presidente (PRES) para teste com liberação da sala
-  await supabase.from('usuario_cargos').upsert({
+  // 3. Atribui cargo selecionado
+  const { error: cargoError } = await supabase.from('usuario_cargos').upsert({
     usuario_id: authData.user.id,
-    cargo_id: 'PRES',
+    cargo_id: cargoId,
     tipo: 'Principal',
   })
 
+  if (cargoError) {
+    console.error('Erro ao vincular cargo:', cargoError)
+  }
+
   // Se já logou direto na sessão
   if (authData.session) {
-    redirect('/sala')
+    redirect('/')
   }
 
   return { success: 'Usuário cadastrado com sucesso! Já pode entrar com a matrícula ou e-mail.' }

@@ -12,6 +12,50 @@ export default function LoginPage() {
   const [cadastroState, formCadastroAction, isCadastroPending] = useActionState(cadastrarPilotoAction, null)
   const [resetState, formResetAction, isResetPending] = useActionState(resetPasswordAction, null)
 
+  // Estados do formulário de login para atalhos
+  const [loginIdentificador, setLoginIdentificador] = useState('1234567')
+  const [loginSenha, setLoginSenha] = useState('ieee2026')
+
+  // Estados do formulário de cadastro com presets
+  const [cadNome, setCadNome] = useState('Lucas Líder de Projeto')
+  const [cadMatricula, setCadMatricula] = useState('2323101')
+  const [cadEmail, setCadEmail] = useState('lider.teste@cefet-rj.br')
+  const [cadSenha, setCadSenha] = useState('ieee2026')
+  const [cadCargo, setCadCargo] = useState('LIDER_PROJ')
+
+  const aplicarPresetCadastro = (tipo: 'pres' | 'lider' | 'membro' | 'trainee') => {
+    if (tipo === 'pres') {
+      setCadNome('Admin Presidente')
+      setCadMatricula('1234567')
+      setCadEmail('admin@cefet-rj.br')
+      setCadSenha('ieee2026')
+      setCadCargo('PRES')
+    } else if (tipo === 'lider') {
+      setCadNome('Lucas Líder de Projeto')
+      setCadMatricula('2323101')
+      setCadEmail('lider.teste@cefet-rj.br')
+      setCadSenha('ieee2026')
+      setCadCargo('LIDER_PROJ')
+    } else if (tipo === 'membro') {
+      setCadNome('Marcos Membro Projetista')
+      setCadMatricula('2323102')
+      setCadEmail('membro.teste@cefet-rj.br')
+      setCadSenha('ieee2026')
+      setCadCargo('MEMBRO_PROJ')
+    } else if (tipo === 'trainee') {
+      setCadNome('Tiago Trainee PSE')
+      setCadMatricula('2323103')
+      setCadEmail('trainee.teste@cefet-rj.br')
+      setCadSenha('ieee2026')
+      setCadCargo('TRAINEE')
+    }
+  }
+
+  const preencherLoginRapido = (id: string) => {
+    setLoginIdentificador(id)
+    setLoginSenha('ieee2026')
+  }
+
   return (
     <div className="min-h-screen bg-blue-50 flex flex-col justify-center items-center p-6 antialiased font-body relative">
       {/* CARD PRINCIPAL DE LOGIN (EXATO DO INDEX.HTML) */}
@@ -27,7 +71,7 @@ export default function LoginPage() {
           <button
             type="button"
             onClick={() => setActiveView('login')}
-            className={`flex-1 py-1.5 rounded-lg transition-all ${
+            className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer ${
               activeView === 'login' ? 'bg-white text-primary shadow-sm' : 'text-gray-400 hover:text-gray-600'
             }`}
           >
@@ -36,7 +80,7 @@ export default function LoginPage() {
           <button
             type="button"
             onClick={() => setActiveView('cadastro')}
-            className={`flex-1 py-1.5 rounded-lg transition-all ${
+            className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer ${
               activeView === 'cadastro' ? 'bg-white text-primary shadow-sm' : 'text-gray-400 hover:text-gray-600'
             }`}
           >
@@ -77,7 +121,8 @@ export default function LoginPage() {
                 type="text"
                 name="identificador"
                 required
-                defaultValue="1234567"
+                value={loginIdentificador}
+                onChange={(e) => setLoginIdentificador(e.target.value)}
                 placeholder="2323162GADM ou email"
                 className="w-full bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm font-semibold outline-none focus:ring-2 focus:ring-primary uppercase transition-all"
               />
@@ -91,7 +136,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="text-[11px] text-gray-400 hover:text-primary flex items-center gap-1"
+                  className="text-[11px] text-gray-400 hover:text-primary flex items-center gap-1 cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-sm">
                     {showPassword ? 'visibility_off' : 'visibility'}
@@ -102,7 +147,8 @@ export default function LoginPage() {
                 type={showPassword ? 'text' : 'password'}
                 name="senha"
                 required
-                defaultValue="ieee2026"
+                value={loginSenha}
+                onChange={(e) => setLoginSenha(e.target.value)}
                 placeholder="••••••••"
                 className="w-full bg-gray-50 border border-gray-200 rounded-xl p-4 text-center text-lg outline-none focus:ring-2 focus:ring-primary font-semibold transition-all tracking-widest"
               />
@@ -124,11 +170,49 @@ export default function LoginPage() {
               )}
             </button>
 
+            {/* ATALHOS RÁPIDOS PARA TESTE DE USUÁRIOS */}
+            <div className="pt-3 border-t border-gray-100 text-left">
+              <p className="text-[10px] font-bold text-gray-400 uppercase mb-1.5 flex items-center gap-1">
+                <span className="material-symbols-outlined text-xs">speed</span>
+                <span>Preencher Matrícula para Teste:</span>
+              </p>
+              <div className="grid grid-cols-2 gap-1.5 text-[10px] font-semibold">
+                <button
+                  type="button"
+                  onClick={() => preencherLoginRapido('1234567')}
+                  className="p-1.5 bg-blue-50/70 hover:bg-blue-100 text-blue-700 rounded-lg border border-blue-100 transition-colors cursor-pointer text-left truncate"
+                >
+                  👑 Admin (1234567)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => preencherLoginRapido('2323101')}
+                  className="p-1.5 bg-blue-50/70 hover:bg-blue-100 text-blue-700 rounded-lg border border-blue-100 transition-colors cursor-pointer text-left truncate"
+                >
+                  🛠️ Líder (2323101)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => preencherLoginRapido('2323102')}
+                  className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg border border-gray-200 transition-colors cursor-pointer text-left truncate"
+                >
+                  👤 Membro (2323102)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => preencherLoginRapido('2323103')}
+                  className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg border border-gray-200 transition-colors cursor-pointer text-left truncate"
+                >
+                  🐣 Trainee (2323103)
+                </button>
+              </div>
+            </div>
+
             <div className="flex flex-col items-center gap-1.5 mt-2">
               <button
                 type="button"
                 onClick={() => setModalRecuperarAberto(true)}
-                className="text-xs text-primary font-extrabold hover:underline py-2.5 flex items-center justify-center gap-1.5 bg-blue-50/80 hover:bg-blue-100/80 w-full rounded-xl border border-blue-100 transition-all cursor-pointer"
+                className="text-xs text-primary font-extrabold hover:underline py-2 flex items-center justify-center gap-1.5 bg-blue-50/50 hover:bg-blue-100/80 w-full rounded-xl border border-blue-100 transition-all cursor-pointer"
               >
                 <span className="material-symbols-outlined text-base">lock_reset</span>
                 <span>Esqueci minha senha / Redefinir</span>
@@ -137,9 +221,80 @@ export default function LoginPage() {
           </form>
         )}
 
-        {/* FORMULÁRIO DE CADASTRO PILOTO */}
+        {/* FORMULÁRIO DE CADASTRO PILOTO COM PRESETS */}
         {activeView === 'cadastro' && (
           <form action={formCadastroAction} className="space-y-3 text-left">
+            {/* SELEÇÃO RÁPIDA DE PRESET */}
+            <div>
+              <p className="text-[10px] font-bold text-gray-400 uppercase ml-0.5 mb-1 flex items-center gap-1">
+                <span className="material-symbols-outlined text-xs">tune</span>
+                <span>Preenchimento Rápido por Perfil:</span>
+              </p>
+              <div className="grid grid-cols-2 gap-1.5 text-[10px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => aplicarPresetCadastro('lider')}
+                  className={`p-1.5 rounded-lg border transition-all cursor-pointer text-left truncate ${
+                    cadCargo === 'LIDER_PROJ'
+                      ? 'bg-blue-100 border-blue-300 text-primary ring-1 ring-primary'
+                      : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  🛠️ Líder (Opera Sala)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => aplicarPresetCadastro('membro')}
+                  className={`p-1.5 rounded-lg border transition-all cursor-pointer text-left truncate ${
+                    cadCargo === 'MEMBRO_PROJ'
+                      ? 'bg-amber-100 border-amber-300 text-amber-800 ring-1 ring-amber-600'
+                      : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  👤 Membro (Sem Sala)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => aplicarPresetCadastro('trainee')}
+                  className={`p-1.5 rounded-lg border transition-all cursor-pointer text-left truncate ${
+                    cadCargo === 'TRAINEE'
+                      ? 'bg-amber-100 border-amber-300 text-amber-800 ring-1 ring-amber-600'
+                      : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  🐣 Trainee (Sem Sala)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => aplicarPresetCadastro('pres')}
+                  className={`p-1.5 rounded-lg border transition-all cursor-pointer text-left truncate ${
+                    cadCargo === 'PRES'
+                      ? 'bg-blue-100 border-blue-300 text-primary ring-1 ring-primary'
+                      : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  👑 Presidente (Total)
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[10px] font-bold text-gray-400 uppercase ml-1 block mb-1">
+                Cargo e Permissão *
+              </label>
+              <select
+                name="cargo_id"
+                value={cadCargo}
+                onChange={(e) => setCadCargo(e.target.value)}
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary cursor-pointer text-gray-800"
+              >
+                <option value="LIDER_PROJ">🛠️ Líder de Projeto (Liderança • Opera Sala)</option>
+                <option value="MEMBRO_PROJ">👤 Membro Projetista (Membro • Apenas Visualiza Sala)</option>
+                <option value="TRAINEE">🐣 Trainee PSE (Trainee • Apenas Visualiza Sala)</option>
+                <option value="PRES">👑 Presidente (Admin • Acesso Total e Sala)</option>
+              </select>
+            </div>
+
             <div>
               <label className="text-[10px] font-bold text-gray-400 uppercase ml-1 block mb-1">
                 Nome Completo
@@ -148,7 +303,8 @@ export default function LoginPage() {
                 type="text"
                 name="nome"
                 required
-                defaultValue="Admin Presidente"
+                value={cadNome}
+                onChange={(e) => setCadNome(e.target.value)}
                 placeholder="Nome do Membro"
                 className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
               />
@@ -163,7 +319,8 @@ export default function LoginPage() {
                   type="text"
                   name="matricula"
                   required
-                  defaultValue="1234567"
+                  value={cadMatricula}
+                  onChange={(e) => setCadMatricula(e.target.value)}
                   placeholder="1234567"
                   className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary uppercase"
                 />
@@ -176,7 +333,8 @@ export default function LoginPage() {
                   type="password"
                   name="senha"
                   required
-                  defaultValue="ieee2026"
+                  value={cadSenha}
+                  onChange={(e) => setCadSenha(e.target.value)}
                   placeholder="Mín. 6 dígitos"
                   className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
                 />
@@ -191,14 +349,23 @@ export default function LoginPage() {
                 type="email"
                 name="email"
                 required
-                defaultValue="admin@cefet-rj.br"
+                value={cadEmail}
+                onChange={(e) => setCadEmail(e.target.value)}
                 placeholder="email@cefet-rj.br"
                 className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
 
             <p className="text-[10px] text-gray-400 leading-tight">
-              * O usuário piloto será vinculado automaticamente ao cargo de <strong>Presidente</strong> para testes.
+              {cadCargo === 'MEMBRO_PROJ' || cadCargo === 'TRAINEE' ? (
+                <span className="text-amber-700 font-medium">
+                  ⚠️ Este usuário será criado com perfil <strong>sem autorização</strong> para abrir ou assumir a sala (apenas visualização).
+                </span>
+              ) : (
+                <span className="text-emerald-700 font-medium">
+                  ✅ Este usuário terá autorização de liderança para abrir, transferir e trancar a sala.
+                </span>
+              )}
             </p>
 
             <button
@@ -206,7 +373,7 @@ export default function LoginPage() {
               disabled={isCadastroPending}
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-xl shadow-md active:scale-95 transition-all text-xs flex items-center justify-center gap-1.5 cursor-pointer mt-2"
             >
-              {isCadastroPending ? 'Cadastrando...' : 'Criar Usuário Piloto'}
+              {isCadastroPending ? 'Cadastrando...' : 'Cadastrar Usuário de Teste'}
             </button>
           </form>
         )}
