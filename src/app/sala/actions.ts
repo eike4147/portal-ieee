@@ -39,6 +39,7 @@ export async function toggleSalaAction(novoStatus: 'Aberta' | 'Fechada', observa
     return { error: 'Erro ao registrar status: ' + error.message }
   }
 
+  revalidatePath('/')
   revalidatePath('/sala')
   return { success: true }
 }
