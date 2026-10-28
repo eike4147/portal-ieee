@@ -86,16 +86,13 @@ export async function cadastrarPilotoAction(
     return { error: 'Erro ao criar conta no Supabase: ' + (authError?.message || 'Falha ao registrar.') }
   }
 
-  const ehTrainee = cargoId.toUpperCase().includes('TRAINEE')
-
-  // 2. Insere/atualiza no perfil public.usuarios
+  // 2. Insere/atualiza no perfil public.usuarios (sem tipo_membro, cargo é relacional)
   const { error: profileError } = await supabase.from('usuarios').upsert({
     id: authData.user.id,
     matricula,
     nome,
     email,
     status: 'Ativo',
-    tipo_membro: ehTrainee ? 'Trainee' : 'Membro',
   })
 
   if (profileError) {

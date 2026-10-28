@@ -23,7 +23,6 @@ export default async function HomePage() {
       id,
       nome,
       matricula,
-      tipo_membro,
       usuario_cargos (
         cargos (
           nome_cargo,
@@ -36,6 +35,8 @@ export default async function HomePage() {
     .single()
 
   const cargos = perfil?.usuario_cargos?.map((uc: any) => uc.cargos) || []
+  const ehTrainee = cargos.length > 0 && cargos.every((c: any) => c?.nivel_acesso === 'Trainee')
+  const tipoMembroDerivado = ehTrainee ? 'Trainee' : 'Membro'
   const podeGerenciarSala = cargos.some(
     (c: any) =>
       c?.permite_abrir_sala === true ||
@@ -106,7 +107,7 @@ export default async function HomePage() {
         id: user.id,
         nome: perfil?.nome || user.email || 'Membro',
         matricula: perfil?.matricula || '',
-        tipo_membro: perfil?.tipo_membro || 'Membro',
+        tipo_membro: tipoMembroDerivado,
         cargos: cargos.map((c: any) => c?.nome_cargo).filter(Boolean),
         podeGerenciarSala,
       }}
