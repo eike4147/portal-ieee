@@ -17,11 +17,11 @@ export default function LoginPage() {
   const [loginSenha, setLoginSenha] = useState('ieee2026')
 
   // Estados do formulário de cadastro com presets
-  const [cadNome, setCadNome] = useState('Lucas Líder de Projeto')
+  const [cadNome, setCadNome] = useState('Lucas Líder de Equipe')
   const [cadMatricula, setCadMatricula] = useState('2323101')
   const [cadEmail, setCadEmail] = useState('lider.teste@cefet-rj.br')
   const [cadSenha, setCadSenha] = useState('ieee2026')
-  const [cadCargo, setCadCargo] = useState('LIDER_PROJ')
+  const [cadCargo, setCadCargo] = useState('CS-GAME-GER-LID')
 
   const aplicarPresetCadastro = (tipo: 'pres' | 'lider' | 'membro' | 'trainee') => {
     if (tipo === 'pres') {
@@ -29,25 +29,25 @@ export default function LoginPage() {
       setCadMatricula('1234567')
       setCadEmail('admin@cefet-rj.br')
       setCadSenha('ieee2026')
-      setCadCargo('PRES')
+      setCadCargo('RAMO-EXEC-GER-PRES')
     } else if (tipo === 'lider') {
-      setCadNome('Lucas Líder de Projeto')
+      setCadNome('Lucas Líder de Equipe')
       setCadMatricula('2323101')
       setCadEmail('lider.teste@cefet-rj.br')
       setCadSenha('ieee2026')
-      setCadCargo('LIDER_PROJ')
+      setCadCargo('CS-GAME-GER-LID')
     } else if (tipo === 'membro') {
       setCadNome('Marcos Membro Projetista')
       setCadMatricula('2323102')
       setCadEmail('membro.teste@cefet-rj.br')
       setCadSenha('ieee2026')
-      setCadCargo('MEMBRO_PROJ')
+      setCadCargo('AESS-TEC-AERO-MEM')
     } else if (tipo === 'trainee') {
       setCadNome('Tiago Trainee PSE')
       setCadMatricula('2323103')
       setCadEmail('trainee.teste@cefet-rj.br')
       setCadSenha('ieee2026')
-      setCadCargo('TRAINEE')
+      setCadCargo('WIE-TEC-GER-TRA')
     }
   }
 
@@ -235,7 +235,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={() => aplicarPresetCadastro('lider')}
                   className={`p-1.5 rounded-lg border transition-all cursor-pointer text-left truncate ${
-                    cadCargo === 'LIDER_PROJ'
+                    cadCargo === 'CS-GAME-GER-LID'
                       ? 'bg-blue-100 border-blue-300 text-primary ring-1 ring-primary'
                       : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
                   }`}
@@ -246,7 +246,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={() => aplicarPresetCadastro('membro')}
                   className={`p-1.5 rounded-lg border transition-all cursor-pointer text-left truncate ${
-                    cadCargo === 'MEMBRO_PROJ'
+                    cadCargo === 'AESS-TEC-AERO-MEM'
                       ? 'bg-amber-100 border-amber-300 text-amber-800 ring-1 ring-amber-600'
                       : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
                   }`}
@@ -257,7 +257,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={() => aplicarPresetCadastro('trainee')}
                   className={`p-1.5 rounded-lg border transition-all cursor-pointer text-left truncate ${
-                    cadCargo === 'TRAINEE'
+                    cadCargo === 'WIE-TEC-GER-TRA'
                       ? 'bg-amber-100 border-amber-300 text-amber-800 ring-1 ring-amber-600'
                       : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
                   }`}
@@ -268,7 +268,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={() => aplicarPresetCadastro('pres')}
                   className={`p-1.5 rounded-lg border transition-all cursor-pointer text-left truncate ${
-                    cadCargo === 'PRES'
+                    cadCargo === 'RAMO-EXEC-GER-PRES'
                       ? 'bg-blue-100 border-blue-300 text-primary ring-1 ring-primary'
                       : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
                   }`}
@@ -288,10 +288,10 @@ export default function LoginPage() {
                 onChange={(e) => setCadCargo(e.target.value)}
                 className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary cursor-pointer text-gray-800"
               >
-                <option value="LIDER_PROJ">🛠️ Líder de Projeto (Liderança • Opera Sala)</option>
-                <option value="MEMBRO_PROJ">👤 Membro Projetista (Membro • Apenas Visualiza Sala)</option>
-                <option value="TRAINEE">🐣 Trainee PSE (Trainee • Apenas Visualiza Sala)</option>
-                <option value="PRES">👑 Presidente (Admin • Acesso Total e Sala)</option>
+                <option value="RAMO-EXEC-GER-PRES">👑 Presidente (Ramo IEEE • Acesso Total e Sala)</option>
+                <option value="CS-GAME-GER-LID">🛠️ Líder (CS Games • Opera Sala)</option>
+                <option value="AESS-TEC-AERO-MEM">👤 Membro Projetista (AESS Aero • Apenas Visualiza Sala)</option>
+                <option value="WIE-TEC-GER-TRA">🐣 Trainee PSE (WIE • Apenas Visualiza Sala)</option>
               </select>
             </div>
 

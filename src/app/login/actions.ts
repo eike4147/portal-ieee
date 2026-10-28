@@ -62,7 +62,7 @@ export async function cadastrarPilotoAction(
   const matricula = formData.get('matricula')?.toString().trim()
   const email = formData.get('email')?.toString().trim()
   const senha = formData.get('senha')?.toString()
-  const cargoId = formData.get('cargo_id')?.toString().trim() || 'PRES'
+  const cargoId = formData.get('cargo_id')?.toString().trim() || 'RAMO-EXEC-GER-PRES'
 
   if (!nome || !matricula || !email || !senha) {
     return { error: 'Preencha todos os campos.' }
