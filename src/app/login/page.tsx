@@ -179,10 +179,17 @@ export default function LoginPage() {
               <div className="grid grid-cols-2 gap-1.5 text-[10px] font-semibold">
                 <button
                   type="button"
+                  onClick={() => preencherLoginRapido('2012391GEL')}
+                  className="p-1.5 bg-blue-100/70 hover:bg-blue-200 text-primary font-bold rounded-lg border border-blue-200 transition-colors cursor-pointer text-left truncate col-span-2"
+                >
+                  👑 Eike Vimieiro • Presidente (2012391GEL)
+                </button>
+                <button
+                  type="button"
                   onClick={() => preencherLoginRapido('1234567')}
                   className="p-1.5 bg-blue-50/70 hover:bg-blue-100 text-blue-700 rounded-lg border border-blue-100 transition-colors cursor-pointer text-left truncate"
                 >
-                  👑 Admin (1234567)
+                  👑 Admin Piloto (1234567)
                 </button>
                 <button
                   type="button"
