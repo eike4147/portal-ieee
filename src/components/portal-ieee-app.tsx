@@ -3,6 +3,12 @@
 import { useState, useTransition } from 'react'
 import { toggleSalaAction } from '@/app/sala/actions'
 import { logoutAction } from '@/app/actions'
+import {
+  salvarPCHAction,
+  salvarDadosCadastraisAction,
+  alterarSenhaAction,
+  type SalvarDadosCadastraisPayload,
+} from '@/app/perfil/actions'
 
 interface UsuarioProps {
   id: string
@@ -35,16 +41,84 @@ interface LogSalaProps {
   usuarios?: any
 }
 
+export interface SlotModalidade {
+  presencial: boolean
+  online: boolean
+}
+
+export type GradePchSemanal = Record<string, Record<string, SlotModalidade>>
+
+export interface PchDataProps {
+  dados_pch?: GradePchSemanal | Record<string, any>
+  visibilidade?: 'todos' | 'lider'
+  atualizado_em?: string | null
+}
+
+export interface DadosMembroProps extends SalvarDadosCadastraisPayload {
+  atualizado_em?: string | null
+}
+
+function converterParaGradePch(
+  raw: any,
+  listaSlots: string[]
+): Record<string, Record<string, SlotModalidade>> {
+  const dias = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom']
+  const resultado: Record<string, Record<string, SlotModalidade>> = {
+    seg: {},
+    ter: {},
+    qua: {},
+    qui: {},
+    sex: {},
+    sab: {},
+    dom: {},
+  }
+
+  if (!raw || typeof raw !== 'object') {
+    return resultado
+  }
+
+  for (const d of dias) {
+    const diaRaw = raw[d]
+    if (Array.isArray(diaRaw)) {
+      for (const slot of listaSlots) {
+        if (!diaRaw.includes(slot)) {
+          resultado[d][slot] = { presencial: true, online: false }
+        }
+      }
+    } else if (diaRaw && typeof diaRaw === 'object') {
+      for (const [slot, val] of Object.entries(diaRaw)) {
+        if (typeof val === 'object' && val !== null) {
+          const v = val as any
+          if (v.presencial || v.online) {
+            resultado[d][slot] = {
+              presencial: Boolean(v.presencial),
+              online: Boolean(v.online),
+            }
+          }
+        } else if (val === true) {
+          resultado[d][slot] = { presencial: true, online: false }
+        }
+      }
+    }
+  }
+
+  return resultado
+}
+
 export default function PortalIEEEApp({
   usuario,
   statusSala,
   historicoSala,
   usuariosElegiveisSala = [],
+  pchInicial = null,
+  dadosMembroInicial = null,
 }: {
   usuario: UsuarioProps
   statusSala: StatusSalaProps
   historicoSala: LogSalaProps[]
   usuariosElegiveisSala?: MembroElegivelSala[]
+  pchInicial?: PchDataProps | null
+  dadosMembroInicial?: DadosMembroProps | null
 }) {
   // Estado de navegação principal
   const [activeTab, setActiveTab] = useState<'calendario' | 'disponibilidade' | 'equipe' | 'admin' | 'perfil'>('calendario')
@@ -100,15 +174,37 @@ export default function PortalIEEEApp({
   // PCH State
   const [diaPCH, setDiaPCH] = useState<'seg' | 'ter' | 'qua' | 'qui' | 'sex' | 'sab' | 'dom'>('seg')
   const [modoEdicaoPCH, setModoEdicaoPCH] = useState(false)
-  const [slotsOcupadosPCH, setSlotsOcupadosPCH] = useState<Record<string, string[]>>({
-    seg: ['08:00 - 08:50', '08:50 - 09:40', '10:00 - 10:50'],
-    ter: ['13:30 - 14:20', '14:20 - 15:10'],
-    qua: ['08:00 - 08:50', '08:50 - 09:40'],
-    qui: ['15:30 - 16:20', '16:20 - 17:10'],
-    sex: ['10:00 - 10:50', '11:00 - 11:50'],
-    sab: [],
-    dom: [],
-  })
+  const [visibilidadePCH, setVisibilidadePCH] = useState<'todos' | 'lider'>(
+    pchInicial?.visibilidade || 'todos'
+  )
+  const [ultimaAtualizacaoPCH, setUltimaAtualizacaoPCH] = useState<string | null>(
+    pchInicial?.atualizado_em || null
+  )
+  const [gradePCH, setGradePCH] = useState<Record<string, Record<string, SlotModalidade>>>(() =>
+    converterParaGradePch(pchInicial?.dados_pch, [
+      '07:00 - 08:00', '08:00 - 09:00', '09:00 - 10:00', '10:00 - 11:00',
+      '11:00 - 12:00', '12:00 - 13:00', '13:00 - 14:00', '14:00 - 15:00',
+      '15:00 - 16:00', '16:00 - 17:00', '17:00 - 18:00', '18:00 - 19:00',
+      '19:00 - 20:00', '20:00 - 21:00', '21:00 - 22:00',
+    ])
+  )
+  const [feedbackPCH, setFeedbackPCH] = useState<{ tipo: 'ok' | 'erro'; msg: string } | null>(null)
+  const [isSalvandoPCH, setIsSalvandoPCH] = useState(false)
+
+  // Dados Cadastrais State
+  const [dadosCadastrais, setDadosCadastrais] = useState<DadosMembroProps>(
+    dadosMembroInicial || {}
+  )
+  const [feedbackCadastrais, setFeedbackCadastrais] = useState<{ tipo: 'ok' | 'erro'; msg: string } | null>(null)
+  const [isSalvandoCadastrais, setIsSalvandoCadastrais] = useState(false)
+  const [abaCadastral, setAbaCadastral] = useState<'contato' | 'saude' | 'diversidade' | 'ieee'>('contato')
+
+  // Modal Alterar Senha State
+  const [modalSenhaAberto, setModalSenhaAberto] = useState(false)
+  const [novaSenha, setNovaSenha] = useState('')
+  const [confirmarSenha, setConfirmarSenha] = useState('')
+  const [feedbackSenha, setFeedbackSenha] = useState<{ tipo: 'ok' | 'erro'; msg: string } | null>(null)
+  const [isSalvandoSenha, setIsSalvandoSenha] = useState(false)
 
   // Mock de Capacitações / Agenda para visualização pré-migração
   const capacitacoesMock = [
@@ -235,6 +331,114 @@ export default function PortalIEEEApp({
   const restaurarSimulador = () => {
     setPapelSimulado('Admin (Real)')
     setSimuladorAtivo(false)
+  }
+
+  // Handlers do Módulo 2 (PCH, Dados Cadastrais, Alteração de Senha)
+  const toggleSlotLivre = (dia: string, slot: string) => {
+    if (!modoEdicaoPCH) return
+    setGradePCH((prev) => {
+      const diaObj = { ...(prev[dia] || {}) }
+      if (diaObj[slot]) {
+        delete diaObj[slot]
+      } else {
+        diaObj[slot] = { presencial: true, online: false }
+      }
+      return { ...prev, [dia]: diaObj }
+    })
+  }
+
+  const toggleModalidadeSlot = (
+    dia: string,
+    slot: string,
+    modalidade: 'presencial' | 'online',
+    e?: React.MouseEvent
+  ) => {
+    if (e) e.stopPropagation()
+    if (!modoEdicaoPCH) return
+    setGradePCH((prev) => {
+      const diaObj = { ...(prev[dia] || {}) }
+      const slotAtual = diaObj[slot] || { presencial: false, online: false }
+      const novoVal = !slotAtual[modalidade]
+      const outroVal = modalidade === 'presencial' ? slotAtual.online : slotAtual.presencial
+
+      if (!novoVal && !outroVal) {
+        delete diaObj[slot]
+      } else {
+        diaObj[slot] = {
+          ...slotAtual,
+          [modalidade]: novoVal,
+        }
+      }
+      return { ...prev, [dia]: diaObj }
+    })
+  }
+
+  const aplicarLoteDia = (dia: string, tipo: 'presencial' | 'online' | 'ambos' | 'ocupado') => {
+    if (!modoEdicaoPCH) return
+    setGradePCH((prev) => {
+      const diaObj: Record<string, SlotModalidade> = {}
+      if (tipo !== 'ocupado') {
+        for (const slot of slotsHorarios) {
+          diaObj[slot] = {
+            presencial: tipo === 'presencial' || tipo === 'ambos',
+            online: tipo === 'online' || tipo === 'ambos',
+          }
+        }
+      }
+      return { ...prev, [dia]: diaObj }
+    })
+  }
+
+  const handleSalvarPCH = async () => {
+    setIsSalvandoPCH(true)
+    setFeedbackPCH(null)
+    const res = await salvarPCHAction({
+      dadosPch: gradePCH,
+      visibilidade: visibilidadePCH,
+    })
+    setIsSalvandoPCH(false)
+    if (res.sucesso) {
+      setFeedbackPCH({ tipo: 'ok', msg: res.mensagem })
+      if (res.atualizadoEm) setUltimaAtualizacaoPCH(res.atualizadoEm)
+      setModoEdicaoPCH(false)
+    } else {
+      setFeedbackPCH({ tipo: 'erro', msg: res.mensagem })
+    }
+  }
+
+  const handleSalvarCadastrais = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsSalvandoCadastrais(true)
+    setFeedbackCadastrais(null)
+    const res = await salvarDadosCadastraisAction(dadosCadastrais)
+    setIsSalvandoCadastrais(false)
+    if (res.sucesso) {
+      setFeedbackCadastrais({ tipo: 'ok', msg: res.mensagem })
+      if (res.atualizadoEm) {
+        setDadosCadastrais((prev) => ({ ...prev, atualizado_em: res.atualizadoEm }))
+      }
+    } else {
+      setFeedbackCadastrais({ tipo: 'erro', msg: res.mensagem })
+    }
+  }
+
+  const handleAlterarSenha = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsSalvandoSenha(true)
+    setFeedbackSenha(null)
+    const res = await alterarSenhaAction(novaSenha, confirmarSenha)
+    setIsSalvandoSenha(false)
+    if (res.sucesso) {
+      setFeedbackSenha({ tipo: 'ok', msg: res.mensagem })
+      setNovaSenha('')
+      setConfirmarSenha('')
+      setTimeout(() => {
+        setModalSenhaAberto(false)
+        setFeedbackSenha(null)
+      }, 1500)
+    } else {
+      setFeedbackSenha({ tipo: 'erro', msg: res.mensagem })
+    }
   }
 
   return (
@@ -1164,6 +1368,12 @@ export default function PortalIEEEApp({
               <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-center gap-3 relative z-10">
                 <button
                   type="button"
+                  onClick={() => {
+                    setModalSenhaAberto(true)
+                    setFeedbackSenha(null)
+                    setNovaSenha('')
+                    setConfirmarSenha('')
+                  }}
                   className="flex-1 max-w-[160px] py-2.5 px-4 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 font-bold rounded-2xl text-xs flex items-center justify-center gap-1.5 transition-all shadow-xs active:scale-95 cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-base text-gray-500">lock_reset</span>
@@ -1247,68 +1457,303 @@ export default function PortalIEEEApp({
 
                 {/* SUBVIEW: PCH */}
                 {perfilSubView === 'pch' && (
-                  <div className="bg-white p-5 rounded-3xl shadow-xs border border-gray-100">
-                    <div className="flex items-center justify-between mb-4">
-                      <p className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        Sua Disponibilidade Semanal
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setModoEdicaoPCH(!modoEdicaoPCH)}
-                        className="px-3.5 py-1.5 bg-primary text-white font-bold rounded-xl text-xs flex items-center gap-1 cursor-pointer"
-                      >
-                        <span className="material-symbols-outlined text-sm">edit</span>
-                        <span>{modoEdicaoPCH ? 'Salvar PCH' : 'Editar PCH'}</span>
-                      </button>
-                    </div>
+                  <div className="bg-white p-5 rounded-3xl shadow-xs border border-gray-100 space-y-4">
+                    {/* Header PCH */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Sua Disponibilidade Semanal
+                          </p>
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                              ultimaAtualizacaoPCH
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-amber-50 text-amber-700 border border-amber-200'
+                            }`}
+                          >
+                            {ultimaAtualizacaoPCH
+                              ? `Atualizado: ${new Date(ultimaAtualizacaoPCH).toLocaleDateString('pt-BR')}`
+                              : 'Pendente de preenchimento'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-gray-400 mt-0.5">
+                          {modoEdicaoPCH
+                            ? 'Clique nos horários para alternar entre Livre (Verde) e Ocupado (Vermelho).'
+                            : 'Visualize seus horários cadastrados. Clique em "Editar PCH" para alterar.'}
+                        </p>
+                      </div>
 
-                    {/* 7 DIAS */}
-                    <div className="flex gap-1.5 overflow-x-auto pb-2 mb-4 scrollbar-none">
-                      {(['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'] as const).map((d) => (
+                      <div className="flex items-center gap-2">
+                        {modoEdicaoPCH && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setModoEdicaoPCH(false)
+                              setFeedbackPCH(null)
+                            }}
+                            className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                          >
+                            Cancelar
+                          </button>
+                        )}
                         <button
-                          key={d}
                           type="button"
-                          onClick={() => setDiaPCH(d)}
-                          className={`flex-1 min-w-[44px] py-2 px-1 text-xs font-bold rounded-xl transition-all border text-center cursor-pointer ${
-                            diaPCH === d
-                              ? 'bg-primary text-white border-primary shadow-sm'
-                              : 'bg-gray-50 text-gray-600 border-gray-200'
+                          disabled={isSalvandoPCH}
+                          onClick={() => {
+                            if (modoEdicaoPCH) {
+                              handleSalvarPCH()
+                            } else {
+                              setModoEdicaoPCH(true)
+                              setFeedbackPCH(null)
+                            }
+                          }}
+                          className={`px-3.5 py-1.5 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer ${
+                            modoEdicaoPCH
+                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                              : 'bg-primary hover:bg-blue-700 text-white'
                           }`}
                         >
-                          {d.toUpperCase()}
+                          <span className="material-symbols-outlined text-sm">
+                            {isSalvandoPCH ? 'sync' : modoEdicaoPCH ? 'save' : 'edit'}
+                          </span>
+                          <span>
+                            {isSalvandoPCH ? 'Salvando...' : modoEdicaoPCH ? 'Salvar PCH' : 'Editar PCH'}
+                          </span>
                         </button>
-                      ))}
+                      </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {/* Feedback Toast */}
+                    {feedbackPCH && (
+                      <div
+                        className={`p-3 rounded-2xl text-xs font-bold text-center flex items-center justify-center gap-1.5 ${
+                          feedbackPCH.tipo === 'ok'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-red-50 text-red-700 border border-red-200'
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-base">
+                          {feedbackPCH.tipo === 'ok' ? 'check_circle' : 'error'}
+                        </span>
+                        <span>{feedbackPCH.msg}</span>
+                      </div>
+                    )}
+
+                    {/* Visibilidade do PCH */}
+                    {modoEdicaoPCH && (
+                      <div className="p-3 bg-blue-50/60 border border-blue-100 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <span className="text-gray-700 font-bold flex items-center gap-1.5">
+                          <span className="material-symbols-outlined text-base text-primary">visibility</span>
+                          Visibilidade da sua grade:
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <label className="flex items-center gap-1 cursor-pointer font-medium text-gray-700">
+                            <input
+                              type="radio"
+                              name="visibilidadePch"
+                              checked={visibilidadePCH === 'todos'}
+                              onChange={() => setVisibilidadePCH('todos')}
+                              className="accent-primary"
+                            />
+                            <span>Toda a equipe</span>
+                          </label>
+                          <label className="flex items-center gap-1 cursor-pointer font-medium text-gray-700">
+                            <input
+                              type="radio"
+                              name="visibilidadePch"
+                              checked={visibilidadePCH === 'lider'}
+                              onChange={() => setVisibilidadePCH('lider')}
+                              className="accent-primary"
+                            />
+                            <span>Apenas Liderança / GP</span>
+                          </label>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 7 DIAS */}
+                    <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                      {(
+                        [
+                          { key: 'seg', label: 'Segunda', short: 'SEG' },
+                          { key: 'ter', label: 'Terça', short: 'TER' },
+                          { key: 'qua', label: 'Quarta', short: 'QUA' },
+                          { key: 'qui', label: 'Quinta', short: 'QUI' },
+                          { key: 'sex', label: 'Sexta', short: 'SEX' },
+                          { key: 'sab', label: 'Sábado', short: 'SÁB' },
+                          { key: 'dom', label: 'Domingo', short: 'DOM' },
+                        ] as const
+                      ).map((d) => {
+                        const livresNoDia = Object.values(gradePCH[d.key] || {}).filter(
+                          (s) => s.presencial || s.online
+                        ).length
+                        const ocupadosNoDia = slotsHorarios.length - livresNoDia
+
+                        return (
+                          <button
+                            key={d.key}
+                            type="button"
+                            onClick={() => setDiaPCH(d.key)}
+                            className={`flex-1 min-w-[55px] py-2 px-1 text-xs font-bold rounded-2xl transition-all border text-center cursor-pointer ${
+                              diaPCH === d.key
+                                ? 'bg-primary text-white border-primary shadow-sm'
+                                : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+                            }`}
+                          >
+                            <span className="block text-[11px] font-black">{d.short}</span>
+                            <span className="block text-[9px] opacity-80 mt-0.5">
+                              {livresNoDia}L / {ocupadosNoDia}O
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    {/* Atalhos rápidos no modo de edição */}
+                    {modoEdicaoPCH && (
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] bg-gray-50 p-2.5 rounded-2xl border border-gray-100">
+                        <span className="font-bold text-gray-600 flex items-center gap-1">
+                          <span className="material-symbols-outlined text-sm text-primary">bolt</span>
+                          Preenchimento Rápido ({diaPCH.toUpperCase()}):
+                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => aplicarLoteDia(diaPCH, 'presencial')}
+                            className="px-2 py-1 bg-white hover:bg-blue-50 text-blue-700 font-bold border border-blue-200 rounded-lg cursor-pointer"
+                          >
+                            🏢 Tudo Presencial
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => aplicarLoteDia(diaPCH, 'online')}
+                            className="px-2 py-1 bg-white hover:bg-indigo-50 text-indigo-700 font-bold border border-indigo-200 rounded-lg cursor-pointer"
+                          >
+                            💻 Tudo Online
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => aplicarLoteDia(diaPCH, 'ambos')}
+                            className="px-2 py-1 bg-white hover:bg-emerald-50 text-emerald-700 font-bold border border-emerald-200 rounded-lg cursor-pointer"
+                          >
+                            ⚡ Ambos
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => aplicarLoteDia(diaPCH, 'ocupado')}
+                            className="px-2 py-1 bg-white hover:bg-red-50 text-red-700 font-bold border border-red-200 rounded-lg cursor-pointer"
+                          >
+                            🚫 Tudo Ocupado
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Grade de Slots com Modalidades Online / Presencial */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                       {slotsHorarios.map((slot) => {
-                        const ocupado = slotsOcupadosPCH[diaPCH]?.includes(slot)
+                        const slotConfig = gradePCH[diaPCH]?.[slot]
+                        const isLivre = Boolean(slotConfig && (slotConfig.presencial || slotConfig.online))
+                        const isPresencial = Boolean(slotConfig?.presencial)
+                        const isOnline = Boolean(slotConfig?.online)
+
                         return (
                           <div
                             key={slot}
-                            onClick={() => {
-                              if (!modoEdicaoPCH) return
-                              setSlotsOcupadosPCH((prev) => {
-                                const list = prev[diaPCH] || []
-                                if (list.includes(slot)) {
-                                  return { ...prev, [diaPCH]: list.filter((s) => s !== slot) }
-                                } else {
-                                  return { ...prev, [diaPCH]: [...list, slot] }
-                                }
-                              })
-                            }}
-                            className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-between transition-all ${
-                              modoEdicaoPCH ? 'cursor-pointer' : ''
-                            } ${
-                              ocupado
-                                ? 'bg-red-50 border-red-200 text-red-700'
-                                : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                            className={`p-3 rounded-2xl border transition-all flex flex-col justify-between gap-2.5 ${
+                              isLivre
+                                ? 'bg-emerald-50/50 border-emerald-200/80 shadow-xs'
+                                : 'bg-gray-50 border-gray-200'
                             }`}
                           >
-                            <span>{slot}</span>
-                            <span className="text-[10px] uppercase font-extrabold">
-                              {ocupado ? '❌ Ocupado' : '✓ Livre'}
-                            </span>
+                            {/* Linha Superior: Horário e Status Principal */}
+                            <div className="flex items-center justify-between">
+                              <span className="font-headline font-bold text-xs text-gray-800 tracking-tight flex items-center gap-1.5">
+                                <span className="material-symbols-outlined text-sm text-gray-400">schedule</span>
+                                {slot}
+                              </span>
+
+                              {/* Botão de Toggle Livre / Ocupado */}
+                              <button
+                                type="button"
+                                disabled={!modoEdicaoPCH}
+                                onClick={() => toggleSlotLivre(diaPCH, slot)}
+                                className={`text-[10px] uppercase font-black px-2.5 py-1 rounded-xl transition-all cursor-pointer ${
+                                  !modoEdicaoPCH
+                                    ? isLivre
+                                      ? 'bg-emerald-100 text-emerald-800'
+                                      : 'bg-red-100 text-red-700'
+                                    : isLivre
+                                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs active:scale-95'
+                                    : 'bg-red-100 hover:bg-red-200 text-red-700 active:scale-95'
+                                }`}
+                              >
+                                {isLivre ? '✓ Livre' : '✕ Ocupado'}
+                              </button>
+                            </div>
+
+                            {/* Linha Inferior: Opções de Modalidade (Online / Presencial) */}
+                            {isLivre ? (
+                              <div className="space-y-1.5 pt-1.5 border-t border-emerald-100">
+                                <div className="flex items-center justify-between text-[10px] text-gray-400 font-bold uppercase">
+                                  <span>Modalidades:</span>
+                                  {isPresencial && isOnline && (
+                                    <span className="text-emerald-700 font-extrabold lowercase text-[9px] bg-emerald-100/70 px-1.5 py-0.2 rounded">
+                                      ambos
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  {/* Chip Presencial */}
+                                  <button
+                                    type="button"
+                                    disabled={!modoEdicaoPCH}
+                                    onClick={(e) => toggleModalidadeSlot(diaPCH, slot, 'presencial', e)}
+                                    className={`py-1.5 px-2 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-all ${
+                                      isPresencial
+                                        ? 'bg-blue-600 text-white shadow-xs'
+                                        : 'bg-white text-gray-400 border border-gray-200 hover:bg-gray-100'
+                                    } ${modoEdicaoPCH ? 'cursor-pointer active:scale-95' : 'cursor-default'}`}
+                                  >
+                                    <span className="material-symbols-outlined text-[13px]">
+                                      {isPresencial ? 'check_circle' : 'apartment'}
+                                    </span>
+                                    <span>Presencial</span>
+                                  </button>
+
+                                  {/* Chip Online */}
+                                  <button
+                                    type="button"
+                                    disabled={!modoEdicaoPCH}
+                                    onClick={(e) => toggleModalidadeSlot(diaPCH, slot, 'online', e)}
+                                    className={`py-1.5 px-2 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-all ${
+                                      isOnline
+                                        ? 'bg-indigo-600 text-white shadow-xs'
+                                        : 'bg-white text-gray-400 border border-gray-200 hover:bg-gray-100'
+                                    } ${modoEdicaoPCH ? 'cursor-pointer active:scale-95' : 'cursor-default'}`}
+                                  >
+                                    <span className="material-symbols-outlined text-[13px]">
+                                      {isOnline ? 'check_circle' : 'devices'}
+                                    </span>
+                                    <span>Online</span>
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="pt-1 text-[11px] text-gray-400 italic flex items-center justify-between">
+                                <span>Indisponível neste horário</span>
+                                {modoEdicaoPCH && (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleSlotLivre(diaPCH, slot)}
+                                    className="text-[10px] text-primary font-bold hover:underline cursor-pointer not-italic"
+                                  >
+                                    Liberar
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )
                       })}
@@ -1344,27 +1789,409 @@ export default function PortalIEEEApp({
 
                 {/* SUBVIEW: DADOS CADASTRAIS */}
                 {perfilSubView === 'cadastrais' && (
-                  <div className="bg-white p-5 rounded-3xl shadow-xs border border-gray-100 space-y-4">
-                    <h4 className="font-bold text-xs uppercase text-gray-400">Informações Cadastradas</h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                      <div className="p-3 bg-gray-50 rounded-xl border">
-                        <span className="text-gray-400 text-[10px] font-bold uppercase block">Nome</span>
-                        <span className="font-bold text-gray-800">{usuario.nome}</span>
+                  <form onSubmit={handleSalvarCadastrais} className="bg-white p-5 rounded-3xl shadow-xs border border-gray-100 space-y-5">
+                    {/* Header Cadastral */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Ficha Cadastral do Membro
+                          </p>
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                              dadosCadastrais.atualizado_em
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-amber-50 text-amber-700 border border-amber-200'
+                            }`}
+                          >
+                            {dadosCadastrais.atualizado_em
+                              ? `Atualizado: ${new Date(dadosCadastrais.atualizado_em).toLocaleDateString('pt-BR')}`
+                              : 'Cadastro inicial'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-gray-400 mt-0.5">
+                          Mantenha seus dados de saúde, emergência e contato sempre em dia com a Gestão de Pessoas.
+                        </p>
                       </div>
-                      <div className="p-3 bg-gray-50 rounded-xl border">
-                        <span className="text-gray-400 text-[10px] font-bold uppercase block">Matrícula</span>
-                        <span className="font-bold text-gray-800">{usuario.matricula || 'N/A'}</span>
-                      </div>
-                      <div className="p-3 bg-gray-50 rounded-xl border">
-                        <span className="text-gray-400 text-[10px] font-bold uppercase block">Instituição</span>
-                        <span className="font-bold text-gray-800">CEFET/RJ - Campus Maracanã</span>
-                      </div>
-                      <div className="p-3 bg-gray-50 rounded-xl border">
-                        <span className="text-gray-400 text-[10px] font-bold uppercase block">Vínculo IEEE</span>
-                        <span className="font-bold text-gray-800">Ramo Estudantil CEFET-RJ</span>
-                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={isSalvandoCadastrais}
+                        className="px-4 py-2 bg-primary hover:bg-blue-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-95 disabled:opacity-60 cursor-pointer"
+                      >
+                        <span className="material-symbols-outlined text-sm">
+                          {isSalvandoCadastrais ? 'sync' : 'save'}
+                        </span>
+                        <span>{isSalvandoCadastrais ? 'Salvando...' : 'Salvar Alterações'}</span>
+                      </button>
                     </div>
-                  </div>
+
+                    {/* Feedback Toast */}
+                    {feedbackCadastrais && (
+                      <div
+                        className={`p-3 rounded-2xl text-xs font-bold text-center flex items-center justify-center gap-1.5 ${
+                          feedbackCadastrais.tipo === 'ok'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-red-50 text-red-700 border border-red-200'
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-base">
+                          {feedbackCadastrais.tipo === 'ok' ? 'check_circle' : 'error'}
+                        </span>
+                        <span>{feedbackCadastrais.msg}</span>
+                      </div>
+                    )}
+
+                    {/* Abas da Ficha Cadastral */}
+                    <div className="flex gap-1.5 overflow-x-auto pb-1 border-b border-gray-100 scrollbar-none">
+                      {[
+                        { key: 'contato', label: 'Contato & Curso', icon: 'contact_page' },
+                        { key: 'saude', label: 'Saúde & Emergência', icon: 'medical_services' },
+                        { key: 'diversidade', label: 'Diversidade & Pessoal', icon: 'diversity_3' },
+                        { key: 'ieee', label: 'Vínculo IEEE', icon: 'verified' },
+                      ].map((aba) => (
+                        <button
+                          key={aba.key}
+                          type="button"
+                          onClick={() => setAbaCadastral(aba.key as any)}
+                          className={`flex items-center gap-1.5 py-2 px-3 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                            abaCadastral === aba.key
+                              ? 'bg-blue-50 text-primary border border-blue-200'
+                              : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+                          }`}
+                        >
+                          <span className="material-symbols-outlined text-base">{aba.icon}</span>
+                          <span>{aba.label}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* ABA 1: CONTATO & CURSO */}
+                    {abaCadastral === 'contato' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            Celular / WhatsApp *
+                          </label>
+                          <input
+                            type="text"
+                            value={dadosCadastrais.celular || ''}
+                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, celular: e.target.value })}
+                            placeholder="(21) 99999-9999"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            Telefone Fixo / Recado
+                          </label>
+                          <input
+                            type="text"
+                            value={dadosCadastrais.telefone_fixo || ''}
+                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, telefone_fixo: e.target.value })}
+                            placeholder="(21) 2568-0000"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            E-mail Pessoal / Contato *
+                          </label>
+                          <input
+                            type="email"
+                            value={dadosCadastrais.email_contato || ''}
+                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, email_contato: e.target.value })}
+                            placeholder="seuemail@gmail.com"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            E-mail Institucional (@aluno.cefet-rj.br)
+                          </label>
+                          <input
+                            type="email"
+                            value={dadosCadastrais.email_institucional || ''}
+                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, email_institucional: e.target.value })}
+                            placeholder="nome.sobrenome@aluno.cefet-rj.br"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            Curso no CEFET/RJ
+                          </label>
+                          <input
+                            type="text"
+                            value={dadosCadastrais.curso || ''}
+                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, curso: e.target.value })}
+                            placeholder="Ex: Engenharia Elétrica / Eletrônica"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            Período Atual
+                          </label>
+                          <input
+                            type="text"
+                            value={dadosCadastrais.periodo || ''}
+                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, periodo: e.target.value })}
+                            placeholder="Ex: 5º período"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ABA 2: SAÚDE & EMERGÊNCIA */}
+                    {abaCadastral === 'saude' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            Contato de Emergência (Nome) *
+                          </label>
+                          <input
+                            type="text"
+                            value={dadosCadastrais.emergencia_nome || ''}
+                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, emergencia_nome: e.target.value })}
+                            placeholder="Ex: Maria (Mãe)"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            Parentesco do Contato *
+                          </label>
+                          <input
+                            type="text"
+                            value={dadosCadastrais.emergencia_parentesco || ''}
+                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, emergencia_parentesco: e.target.value })}
+                            placeholder="Ex: Mãe / Pai / Cônjuge"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            Telefone de Emergência *
+                          </label>
+                          <input
+                            type="text"
+                            value={dadosCadastrais.emergencia_telefone || ''}
+                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, emergencia_telefone: e.target.value })}
+                            placeholder="(21) 98888-8888"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            Tipo Sanguíneo + Fator RH
+                          </label>
+                          <select
+                            value={dadosCadastrais.tipo_sanguineo || ''}
+                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, tipo_sanguineo: e.target.value })}
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                          >
+                            <option value="">Não informado</option>
+                            <option value="A+">A+</option>
+                            <option value="A-">A-</option>
+                            <option value="B+">B+</option>
+                            <option value="B-">B-</option>
+                            <option value="AB+">AB+</option>
+                            <option value="AB-">AB-</option>
+                            <option value="O+">O+</option>
+                            <option value="O-">O-</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            Possui Plano de Saúde?
+                          </label>
+                          <input
+                            type="text"
+                            value={dadosCadastrais.plano_saude || ''}
+                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, plano_saude: e.target.value })}
+                            placeholder="Ex: Unimed / Amil / Não possuo (SUS)"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            Alergia a Medicamentos
+                          </label>
+                          <input
+                            type="text"
+                            value={dadosCadastrais.alergia_medicamento || ''}
+                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, alergia_medicamento: e.target.value })}
+                            placeholder="Ex: Dipirona, Penicilina (ou Nenhuma)"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            Alergia a Alimentos
+                          </label>
+                          <input
+                            type="text"
+                            value={dadosCadastrais.alergia_alimento || ''}
+                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, alergia_alimento: e.target.value })}
+                            placeholder="Ex: Amendoim, Frutos do mar (ou Nenhuma)"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            Tratamento / Medicamento Contínuo
+                          </label>
+                          <input
+                            type="text"
+                            value={dadosCadastrais.medicamento_continuo || ''}
+                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, medicamento_continuo: e.target.value })}
+                            placeholder="Ex: Insulina, Ritalina (ou Nenhum)"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ABA 3: DIVERSIDADE & PESSOAL */}
+                    {abaCadastral === 'diversidade' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            Nome Civil Completo
+                          </label>
+                          <input
+                            type="text"
+                            value={dadosCadastrais.nome_civil || ''}
+                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, nome_civil: e.target.value })}
+                            placeholder="Nome de registro"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            Nome Social / Preferencial
+                          </label>
+                          <input
+                            type="text"
+                            value={dadosCadastrais.nome_social || ''}
+                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, nome_social: e.target.value })}
+                            placeholder="Como prefere ser chamado(a)"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            Data de Nascimento
+                          </label>
+                          <input
+                            type="date"
+                            value={dadosCadastrais.data_nascimento || ''}
+                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, data_nascimento: e.target.value })}
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            CPF
+                          </label>
+                          <input
+                            type="text"
+                            value={dadosCadastrais.cpf || ''}
+                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, cpf: e.target.value })}
+                            placeholder="000.000.000-00"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            Identificação Étnico-Racial
+                          </label>
+                          <select
+                            value={dadosCadastrais.etnia || ''}
+                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, etnia: e.target.value })}
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                          >
+                            <option value="">Selecione...</option>
+                            <option value="Branca">Branca</option>
+                            <option value="Preta">Preta</option>
+                            <option value="Parda">Parda</option>
+                            <option value="Amarela">Amarela</option>
+                            <option value="Indígena">Indígena</option>
+                            <option value="Não declarada">Prefiro não declarar</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            Pessoa com Deficiência (PCD) / Neurodivergência
+                          </label>
+                          <input
+                            type="text"
+                            value={dadosCadastrais.neuroatipicidade || ''}
+                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, neuroatipicidade: e.target.value })}
+                            placeholder="Ex: TDAH, Autismo, Baixa visão (ou Não)"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ABA 4: VÍNCULO IEEE */}
+                    {abaCadastral === 'ieee' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            Tempo no Ramo Estudantil IEEE
+                          </label>
+                          <input
+                            type="text"
+                            value={dadosCadastrais.tempo_ramo || ''}
+                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, tempo_ramo: e.target.value })}
+                            placeholder="Ex: 1 ano e 6 meses (ou 1º período)"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            Possui Membresia IEEE Internacional?
+                          </label>
+                          <select
+                            value={dadosCadastrais.membresia_ieee ? 'sim' : 'nao'}
+                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, membresia_ieee: e.target.value === 'sim' })}
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                          >
+                            <option value="nao">Não</option>
+                            <option value="sim">Sim, membro ativo</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            Número de Membro IEEE (Member ID)
+                          </label>
+                          <input
+                            type="text"
+                            value={dadosCadastrais.numero_membro_ieee || ''}
+                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, numero_membro_ieee: e.target.value })}
+                            placeholder="Ex: 98765432"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            Capítulos e Sociedades Associadas
+                          </label>
+                          <input
+                            type="text"
+                            value={dadosCadastrais.capitulos_ieee || ''}
+                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, capitulos_ieee: e.target.value })}
+                            placeholder="Ex: Computer Society (CS), PES, RAS, WIE"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </form>
                 )}
               </div>
             )}
@@ -2080,6 +2907,96 @@ export default function PortalIEEEApp({
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 10. MODAL ALTERAR SENHA */}
+      {/* ========================================================================= */}
+      {modalSenhaAberto && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[400] flex items-center justify-center p-4 text-left">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-blue-50 text-primary flex items-center justify-center font-bold">
+                  <span className="material-symbols-outlined text-lg">lock_reset</span>
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-800 text-sm">Alterar Senha</h4>
+                  <p className="text-[10px] text-gray-400">Atualize sua credencial de acesso</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalSenhaAberto(false)}
+                className="text-gray-400 hover:text-gray-600 bg-gray-50 rounded-full w-7 h-7 flex items-center justify-center cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-base">close</span>
+              </button>
+            </div>
+
+            {feedbackSenha && (
+              <div
+                className={`p-2.5 rounded-xl text-xs font-bold text-center ${
+                  feedbackSenha.tipo === 'ok'
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    : 'bg-red-50 text-red-700 border border-red-200'
+                }`}
+              >
+                {feedbackSenha.msg}
+              </div>
+            )}
+
+            <form onSubmit={handleAlterarSenha} className="space-y-3 text-xs">
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                  Nova Senha (mínimo 6 caracteres)
+                </label>
+                <input
+                  type="password"
+                  value={novaSenha}
+                  onChange={(e) => setNovaSenha(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                  Confirmar Nova Senha
+                </label>
+                <input
+                  type="password"
+                  value={confirmarSenha}
+                  onChange={(e) => setConfirmarSenha(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setModalSenhaAberto(false)}
+                  className="flex-1 py-2.5 bg-gray-100 font-bold rounded-xl text-gray-600 hover:bg-gray-200 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSalvandoSenha}
+                  className="flex-1 py-2.5 bg-primary text-white font-bold rounded-xl hover:bg-blue-700 shadow-md disabled:opacity-60 cursor-pointer flex items-center justify-center gap-1"
+                >
+                  <span className="material-symbols-outlined text-sm">
+                    {isSalvandoSenha ? 'sync' : 'check'}
+                  </span>
+                  <span>{isSalvandoSenha ? 'Salvando...' : 'Salvar Senha'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

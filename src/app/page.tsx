@@ -101,6 +101,20 @@ export default async function HomePage() {
       cargo: u.usuario_cargos?.[0]?.cargos?.nome_cargo || 'Líder / Diretoria',
     }))
 
+  // 5. Busca PCH (Plano de Carga Horária) do usuário logado
+  const { data: pchRecord } = await supabase
+    .from('pch')
+    .select('dados_pch, visibilidade, atualizado_em')
+    .eq('usuario_id', user.id)
+    .maybeSingle()
+
+  // 6. Busca Dados Cadastrais do membro
+  const { data: dadosMembroRecord } = await supabase
+    .from('dados_membros')
+    .select('*')
+    .eq('usuario_id', user.id)
+    .maybeSingle()
+
   return (
     <PortalIEEEApp
       usuario={{
@@ -122,6 +136,8 @@ export default async function HomePage() {
       }}
       historicoSala={logsRecentes || []}
       usuariosElegiveisSala={usuariosElegiveis}
+      pchInicial={pchRecord || null}
+      dadosMembroInicial={dadosMembroRecord || null}
     />
   )
 }
