@@ -7,8 +7,11 @@ import {
   salvarPCHAction,
   salvarDadosCadastraisAction,
   alterarSenhaAction,
+  confirmarDadosSemAlteracaoAction,
   type SalvarDadosCadastraisPayload,
 } from '@/app/perfil/actions'
+import ModalAtualizacaoCadastral from './modal-atualizacao-cadastral'
+import { detectarCursoDaMatricula, sugerirPeriodoDaMatricula } from '@/lib/curso-matricula'
 
 interface UsuarioProps {
   id: string
@@ -112,6 +115,7 @@ export default function PortalIEEEApp({
   usuariosElegiveisSala = [],
   pchInicial = null,
   dadosMembroInicial = null,
+  dadosCadastraisIniciais = null,
 }: {
   usuario: UsuarioProps
   statusSala: StatusSalaProps
@@ -119,6 +123,7 @@ export default function PortalIEEEApp({
   usuariosElegiveisSala?: MembroElegivelSala[]
   pchInicial?: PchDataProps | null
   dadosMembroInicial?: DadosMembroProps | null
+  dadosCadastraisIniciais?: any
 }) {
   // Estado de navegação principal
   const [activeTab, setActiveTab] = useState<'calendario' | 'disponibilidade' | 'equipe' | 'admin' | 'perfil'>('calendario')
@@ -138,6 +143,14 @@ export default function PortalIEEEApp({
   const [modalFichaAberto, setModalFichaAberto] = useState(false)
   const [membroFicha, setMembroFicha] = useState<any>(null)
   const [banner24hVisivel, setBanner24hVisivel] = useState(true)
+
+  // Estados dos Dados Cadastrais & Ficha
+  const [dadosCadastrais, setDadosCadastrais] = useState<any>(
+    dadosMembroInicial || dadosCadastraisIniciais || null
+  )
+  const [modalAtualizacaoCadastralAberto, setModalAtualizacaoCadastralAberto] = useState(false)
+  const [feedbackCadastral, setFeedbackCadastral] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null)
+  const [abaFichaMembro, setAbaFichaMembro] = useState<'pessoais' | 'saude' | 'ieee'>('pessoais')
 
   // Estados do Controle da Sala (Passar, Assumir e Checklist)
   const [modoAcaoSala, setModoAcaoSala] = useState<'inicial' | 'checklist_fechar' | 'passar_busca' | 'passar_confirmar'>('inicial')
@@ -190,14 +203,6 @@ export default function PortalIEEEApp({
   )
   const [feedbackPCH, setFeedbackPCH] = useState<{ tipo: 'ok' | 'erro'; msg: string } | null>(null)
   const [isSalvandoPCH, setIsSalvandoPCH] = useState(false)
-
-  // Dados Cadastrais State
-  const [dadosCadastrais, setDadosCadastrais] = useState<DadosMembroProps>(
-    dadosMembroInicial || {}
-  )
-  const [feedbackCadastrais, setFeedbackCadastrais] = useState<{ tipo: 'ok' | 'erro'; msg: string } | null>(null)
-  const [isSalvandoCadastrais, setIsSalvandoCadastrais] = useState(false)
-  const [abaCadastral, setAbaCadastral] = useState<'contato' | 'saude' | 'diversidade' | 'ieee'>('contato')
 
   // Modal Alterar Senha State
   const [modalSenhaAberto, setModalSenhaAberto] = useState(false)
@@ -403,22 +408,6 @@ export default function PortalIEEEApp({
       setModoEdicaoPCH(false)
     } else {
       setFeedbackPCH({ tipo: 'erro', msg: res.mensagem })
-    }
-  }
-
-  const handleSalvarCadastrais = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsSalvandoCadastrais(true)
-    setFeedbackCadastrais(null)
-    const res = await salvarDadosCadastraisAction(dadosCadastrais)
-    setIsSalvandoCadastrais(false)
-    if (res.sucesso) {
-      setFeedbackCadastrais({ tipo: 'ok', msg: res.mensagem })
-      if (res.atualizadoEm) {
-        setDadosCadastrais((prev) => ({ ...prev, atualizado_em: res.atualizadoEm }))
-      }
-    } else {
-      setFeedbackCadastrais({ tipo: 'erro', msg: res.mensagem })
     }
   }
 
@@ -1787,411 +1776,338 @@ export default function PortalIEEEApp({
                   </div>
                 )}
 
-                {/* SUBVIEW: DADOS CADASTRAIS */}
+                {/* SUBVIEW: DADOS CADASTRAIS (DIVIDIDO EM 3 ETAPAS) */}
                 {perfilSubView === 'cadastrais' && (
-                  <form onSubmit={handleSalvarCadastrais} className="bg-white p-5 rounded-3xl shadow-xs border border-gray-100 space-y-5">
-                    {/* Header Cadastral */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100">
+                  <div className="space-y-4">
+                    {/* BARRA DE TOPO COM STATUS DE ATUALIZAÇÃO E BOTÕES DE AÇÃO */}
+                    <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 p-5 rounded-3xl text-white shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                       <div>
                         <div className="flex items-center gap-2">
-                          <p className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-                            Ficha Cadastral do Membro
-                          </p>
-                          <span
-                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                              dadosCadastrais.atualizado_em
-                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                : 'bg-amber-50 text-amber-700 border border-amber-200'
-                            }`}
-                          >
-                            {dadosCadastrais.atualizado_em
-                              ? `Atualizado: ${new Date(dadosCadastrais.atualizado_em).toLocaleDateString('pt-BR')}`
-                              : 'Cadastro inicial'}
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-200">
+                            Ficha Cadastral Oficial
                           </span>
                         </div>
-                        <p className="text-[11px] text-gray-400 mt-0.5">
-                          Mantenha seus dados de saúde, emergência e contato sempre em dia com a Gestão de Pessoas.
+                        <h4 className="font-headline font-bold text-lg mt-0.5">Seus Dados Cadastrais</h4>
+                        <p className="text-xs text-blue-100 font-medium mt-0.5">
+                          {dadosCadastrais?.atualizado_em
+                            ? `Última atualização em: ${new Date(dadosCadastrais.atualizado_em).toLocaleDateString('pt-BR')}`
+                            : 'Status: Cadastro pendente de revisão'}
                         </p>
                       </div>
 
-                      <button
-                        type="submit"
-                        disabled={isSalvandoCadastrais}
-                        className="px-4 py-2 bg-primary hover:bg-blue-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-95 disabled:opacity-60 cursor-pointer"
-                      >
-                        <span className="material-symbols-outlined text-sm">
-                          {isSalvandoCadastrais ? 'sync' : 'save'}
-                        </span>
-                        <span>{isSalvandoCadastrais ? 'Salvando...' : 'Salvar Alterações'}</span>
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            startTransition(async () => {
+                              const res = await confirmarDadosSemAlteracaoAction()
+                              if (res.success) {
+                                setFeedbackCadastral({ tipo: 'sucesso', texto: res.mensagem || 'Cadastro confirmado!' })
+                                setDadosCadastrais((prev: any) => ({
+                                  ...(prev || {}),
+                                  atualizado_em: new Date().toISOString(),
+                                }))
+                                setTimeout(() => setFeedbackCadastral(null), 3000)
+                              } else {
+                                setFeedbackCadastral({ tipo: 'erro', texto: res.error || 'Erro ao confirmar.' })
+                              }
+                            })
+                          }}
+                          className="px-3.5 py-2.5 bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-sm text-emerald-300">check_circle</span>
+                          <span>Confirmar sem alterar</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setModalAtualizacaoCadastralAberto(true)}
+                          className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-sm">edit_square</span>
+                          <span>Atualizar Meus Dados</span>
+                        </button>
+                      </div>
                     </div>
 
-                    {/* Feedback Toast */}
-                    {feedbackCadastrais && (
+                    {/* FEEDBACK DE AÇÃO */}
+                    {feedbackCadastral && (
                       <div
-                        className={`p-3 rounded-2xl text-xs font-bold text-center flex items-center justify-center gap-1.5 ${
-                          feedbackCadastrais.tipo === 'ok'
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : 'bg-red-50 text-red-700 border border-red-200'
+                        className={`p-3 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-xs transition-all ${
+                          feedbackCadastral.tipo === 'sucesso'
+                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            : 'bg-rose-50 text-rose-800 border border-rose-200'
                         }`}
                       >
                         <span className="material-symbols-outlined text-base">
-                          {feedbackCadastrais.tipo === 'ok' ? 'check_circle' : 'error'}
+                          {feedbackCadastral.tipo === 'sucesso' ? 'check_circle' : 'error'}
                         </span>
-                        <span>{feedbackCadastrais.msg}</span>
+                        <span>{feedbackCadastral.texto}</span>
                       </div>
                     )}
 
-                    {/* Abas da Ficha Cadastral */}
-                    <div className="flex gap-1.5 overflow-x-auto pb-1 border-b border-gray-100 scrollbar-none">
-                      {[
-                        { key: 'contato', label: 'Contato & Curso', icon: 'contact_page' },
-                        { key: 'saude', label: 'Saúde & Emergência', icon: 'medical_services' },
-                        { key: 'diversidade', label: 'Diversidade & Pessoal', icon: 'diversity_3' },
-                        { key: 'ieee', label: 'Vínculo IEEE', icon: 'verified' },
-                      ].map((aba) => (
-                        <button
-                          key={aba.key}
-                          type="button"
-                          onClick={() => setAbaCadastral(aba.key as any)}
-                          className={`flex items-center gap-1.5 py-2 px-3 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                            abaCadastral === aba.key
-                              ? 'bg-blue-50 text-primary border border-blue-200'
-                              : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
-                          }`}
-                        >
-                          <span className="material-symbols-outlined text-base">{aba.icon}</span>
-                          <span>{aba.label}</span>
-                        </button>
-                      ))}
+                    {/* 1. CARD ETAPA 1: IDENTIFICAÇÃO CIVIL & CONTATO */}
+                    <div className="bg-white p-5 rounded-3xl shadow-xs border border-gray-100 space-y-3.5">
+                      <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                        <div className="flex items-center gap-2 text-blue-700 font-bold text-xs uppercase tracking-wider">
+                          <span className="material-symbols-outlined text-base">person</span>
+                          <span>1. Identificação Civil & Contato</span>
+                        </div>
+                        <span className="text-[10px] font-bold text-gray-400">Etapa 1 de 3</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                        <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100">
+                          <span className="text-gray-400 text-[10px] font-bold uppercase block">Nome Civil</span>
+                          <span className="font-bold text-gray-800">
+                            {dadosCadastrais?.nome_civil || usuario.nome}
+                          </span>
+                        </div>
+                        <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100">
+                          <span className="text-gray-400 text-[10px] font-bold uppercase block">Nome Social</span>
+                          <span className="font-semibold text-gray-700">
+                            {dadosCadastrais?.nome_social || 'Não informado'}
+                          </span>
+                        </div>
+                        <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100">
+                          <span className="text-gray-400 text-[10px] font-bold uppercase block">Data de Nascimento</span>
+                          <span className="font-semibold text-gray-700">
+                            {dadosCadastrais?.data_nascimento
+                              ? new Date(dadosCadastrais.data_nascimento + 'T12:00:00').toLocaleDateString('pt-BR')
+                              : 'Não informada'}
+                          </span>
+                        </div>
+                        <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100">
+                          <span className="text-gray-400 text-[10px] font-bold uppercase block">CPF</span>
+                          <span className="font-bold text-gray-800 font-mono">
+                            {dadosCadastrais?.cpf || 'Não informado'}
+                          </span>
+                        </div>
+                        <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100">
+                          <span className="text-gray-400 text-[10px] font-bold uppercase block">Celular / WhatsApp</span>
+                          <span className="font-bold text-gray-800">
+                            {dadosCadastrais?.celular || 'Não informado'}
+                          </span>
+                        </div>
+                        <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100">
+                          <span className="text-gray-400 text-[10px] font-bold uppercase block">Telefone Residencial</span>
+                          <span className="font-semibold text-gray-700">
+                            {dadosCadastrais?.telefone_fixo || 'Não informado'}
+                          </span>
+                        </div>
+                        <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100 sm:col-span-2">
+                          <span className="text-gray-400 text-[10px] font-bold uppercase block">E-mail de Contato</span>
+                          <span className="font-bold text-gray-800">
+                            {dadosCadastrais?.email_contato || 'Não informado'}
+                          </span>
+                        </div>
+                        <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100">
+                          <span className="text-gray-400 text-[10px] font-bold uppercase block">Étnico-Racial</span>
+                          <span className="font-semibold text-gray-700">
+                            {dadosCadastrais?.etnia || 'Não informado'}
+                          </span>
+                        </div>
+                        <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100">
+                          <span className="text-gray-400 text-[10px] font-bold uppercase block">PCD (Deficiência)</span>
+                          <span className="font-semibold text-gray-700">
+                            {dadosCadastrais?.pcd || 'Não possui'}
+                          </span>
+                        </div>
+                        <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100 sm:col-span-2">
+                          <span className="text-gray-400 text-[10px] font-bold uppercase block">Neurodivergência</span>
+                          <span className="font-semibold text-gray-700">
+                            {dadosCadastrais?.neuroatipicidade || 'Não possui'}
+                          </span>
+                        </div>
+                      </div>
                     </div>
 
-                    {/* ABA 1: CONTATO & CURSO */}
-                    {abaCadastral === 'contato' && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                            Celular / WhatsApp *
-                          </label>
-                          <input
-                            type="text"
-                            value={dadosCadastrais.celular || ''}
-                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, celular: e.target.value })}
-                            placeholder="(21) 99999-9999"
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                          />
+                    {/* 2. CARD ETAPA 2: SAÚDE & EMERGÊNCIA */}
+                    <div className="bg-white p-5 rounded-3xl shadow-xs border border-gray-100 space-y-3.5">
+                      <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                        <div className="flex items-center gap-2 text-red-600 font-bold text-xs uppercase tracking-wider">
+                          <span className="material-symbols-outlined text-base">medical_services</span>
+                          <span>2. Saúde & Emergência</span>
                         </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                            Telefone Fixo / Recado
-                          </label>
-                          <input
-                            type="text"
-                            value={dadosCadastrais.telefone_fixo || ''}
-                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, telefone_fixo: e.target.value })}
-                            placeholder="(21) 2568-0000"
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                          />
+                        <span className="text-[10px] font-bold text-gray-400">Etapa 2 de 3</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                        <div className="p-3 bg-red-50/60 rounded-xl border border-red-100 flex items-center justify-between">
+                          <div>
+                            <span className="text-red-700 text-[10px] font-bold uppercase block">Tipo Sanguíneo</span>
+                            <span className="font-extrabold text-base text-red-900">
+                              {dadosCadastrais?.tipo_sanguineo || 'Não informado'}
+                            </span>
+                          </div>
+                          <span className="material-symbols-outlined text-2xl text-red-300">bloodtype</span>
                         </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                            E-mail Pessoal / Contato *
-                          </label>
-                          <input
-                            type="email"
-                            value={dadosCadastrais.email_contato || ''}
-                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, email_contato: e.target.value })}
-                            placeholder="seuemail@gmail.com"
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                          />
+
+                        <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100 sm:col-span-2">
+                          <span className="text-gray-400 text-[10px] font-bold uppercase block">Plano de Saúde</span>
+                          <span className="font-bold text-gray-800">
+                            {dadosCadastrais?.plano_saude || 'Não possui'}
+                          </span>
                         </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+
+                        {/* Contato de emergência com destaque */}
+                        <div className="p-3.5 bg-red-50/50 rounded-2xl border border-red-200/80 col-span-full space-y-1.5">
+                          <span className="text-[10px] font-bold uppercase text-red-800 flex items-center gap-1">
+                            <span className="material-symbols-outlined text-sm">phone_in_talk</span> Contato de Emergência
+                          </span>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <div>
+                              <span className="text-gray-400 text-[9px] uppercase font-bold block">Nome</span>
+                              <span className="font-bold text-gray-800">
+                                {dadosCadastrais?.emergencia_nome || 'Não informado'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-gray-400 text-[9px] uppercase font-bold block">Parentesco</span>
+                              <span className="font-semibold text-gray-700">
+                                {dadosCadastrais?.emergencia_parentesco || 'Não informado'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-gray-400 text-[9px] uppercase font-bold block">Telefone</span>
+                              <span className="font-bold text-red-700 font-mono">
+                                {dadosCadastrais?.emergencia_telefone || 'Não informado'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100">
+                          <span className="text-gray-400 text-[10px] font-bold uppercase block">Alergia a Medicamento</span>
+                          <span className="font-semibold text-gray-700">
+                            {dadosCadastrais?.alergia_medicamento || 'Não possui'}
+                          </span>
+                        </div>
+
+                        <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100">
+                          <span className="text-gray-400 text-[10px] font-bold uppercase block">Alergia a Alimento</span>
+                          <span className="font-semibold text-gray-700">
+                            {dadosCadastrais?.alergia_alimento || 'Não possui'}
+                          </span>
+                        </div>
+
+                        <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100">
+                          <span className="text-gray-400 text-[10px] font-bold uppercase block">Outras Alergias</span>
+                          <span className="font-semibold text-gray-700">
+                            {dadosCadastrais?.alergia_outras || 'Não possui'}
+                          </span>
+                        </div>
+
+                        <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100">
+                          <span className="text-gray-400 text-[10px] font-bold uppercase block">Tratamento Contínuo</span>
+                          <span className="font-semibold text-gray-700">
+                            {dadosCadastrais?.tratamento_continuo || 'Não possui'}
+                          </span>
+                        </div>
+
+                        <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100">
+                          <span className="text-gray-400 text-[10px] font-bold uppercase block">Medicamento Contínuo</span>
+                          <span className="font-semibold text-gray-700">
+                            {dadosCadastrais?.medicamento_continuo || 'Não possui'}
+                          </span>
+                        </div>
+
+                        <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100">
+                          <span className="text-gray-400 text-[10px] font-bold uppercase block">Glicose ou Pressão</span>
+                          <span className="font-semibold text-gray-700">
+                            {dadosCadastrais?.glicose_pressao || 'Não possui'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 3. CARD ETAPA 3: VÍNCULO ACADÊMICO & IEEE */}
+                    <div className="bg-white p-5 rounded-3xl shadow-xs border border-gray-100 space-y-3.5">
+                      <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                        <div className="flex items-center gap-2 text-indigo-700 font-bold text-xs uppercase tracking-wider">
+                          <span className="material-symbols-outlined text-base">school</span>
+                          <span>3. Vínculo Acadêmico (CEFET-RJ) & IEEE</span>
+                        </div>
+                        <span className="text-[10px] font-bold text-gray-400">Etapa 3 de 3</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                        <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-100">
+                          <span className="text-blue-700 text-[10px] font-bold uppercase block">Matrícula CEFET-RJ</span>
+                          <span className="font-extrabold text-blue-900 font-mono">
+                            {usuario.matricula || 'N/A'}
+                          </span>
+                        </div>
+
+                        <div className="p-3 bg-indigo-50/60 rounded-xl border border-indigo-100 sm:col-span-2">
+                          <span className="text-indigo-700 text-[10px] font-bold uppercase block">
+                            Curso no CEFET-RJ (Auto-detectado)
+                          </span>
+                          <span className="font-extrabold text-indigo-900">
+                            {dadosCadastrais?.curso || detectarCursoDaMatricula(usuario.matricula) || 'Não informado'}
+                          </span>
+                        </div>
+
+                        <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100">
+                          <span className="text-gray-400 text-[10px] font-bold uppercase block">Período Atual</span>
+                          <span className="font-bold text-gray-800">
+                            {dadosCadastrais?.periodo || sugerirPeriodoDaMatricula(usuario.matricula)}
+                          </span>
+                        </div>
+
+                        <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100 sm:col-span-2">
+                          <span className="text-gray-400 text-[10px] font-bold uppercase block">
                             E-mail Institucional (@aluno.cefet-rj.br)
-                          </label>
-                          <input
-                            type="email"
-                            value={dadosCadastrais.email_institucional || ''}
-                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, email_institucional: e.target.value })}
-                            placeholder="nome.sobrenome@aluno.cefet-rj.br"
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                          />
+                          </span>
+                          <span className="font-bold text-gray-800">
+                            {dadosCadastrais?.email_institucional || 'Não cadastrado'}
+                          </span>
                         </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                            Curso no CEFET/RJ
-                          </label>
-                          <input
-                            type="text"
-                            value={dadosCadastrais.curso || ''}
-                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, curso: e.target.value })}
-                            placeholder="Ex: Engenharia Elétrica / Eletrônica"
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                            Período Atual
-                          </label>
-                          <input
-                            type="text"
-                            value={dadosCadastrais.periodo || ''}
-                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, periodo: e.target.value })}
-                            placeholder="Ex: 5º período"
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                          />
-                        </div>
-                      </div>
-                    )}
 
-                    {/* ABA 2: SAÚDE & EMERGÊNCIA */}
-                    {abaCadastral === 'saude' && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                            Contato de Emergência (Nome) *
-                          </label>
-                          <input
-                            type="text"
-                            value={dadosCadastrais.emergencia_nome || ''}
-                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, emergencia_nome: e.target.value })}
-                            placeholder="Ex: Maria (Mãe)"
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                          />
+                        <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100">
+                          <span className="text-gray-400 text-[10px] font-bold uppercase block">Tempo de Ramo</span>
+                          <span className="font-bold text-gray-800">
+                            {dadosCadastrais?.tempo_ramo || 'Não informado'}
+                          </span>
                         </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                            Parentesco do Contato *
-                          </label>
-                          <input
-                            type="text"
-                            value={dadosCadastrais.emergencia_parentesco || ''}
-                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, emergencia_parentesco: e.target.value })}
-                            placeholder="Ex: Mãe / Pai / Cônjuge"
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                            Telefone de Emergência *
-                          </label>
-                          <input
-                            type="text"
-                            value={dadosCadastrais.emergencia_telefone || ''}
-                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, emergencia_telefone: e.target.value })}
-                            placeholder="(21) 98888-8888"
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                            Tipo Sanguíneo + Fator RH
-                          </label>
-                          <select
-                            value={dadosCadastrais.tipo_sanguineo || ''}
-                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, tipo_sanguineo: e.target.value })}
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                          >
-                            <option value="">Não informado</option>
-                            <option value="A+">A+</option>
-                            <option value="A-">A-</option>
-                            <option value="B+">B+</option>
-                            <option value="B-">B-</option>
-                            <option value="AB+">AB+</option>
-                            <option value="AB-">AB-</option>
-                            <option value="O+">O+</option>
-                            <option value="O-">O-</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                            Possui Plano de Saúde?
-                          </label>
-                          <input
-                            type="text"
-                            value={dadosCadastrais.plano_saude || ''}
-                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, plano_saude: e.target.value })}
-                            placeholder="Ex: Unimed / Amil / Não possuo (SUS)"
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                            Alergia a Medicamentos
-                          </label>
-                          <input
-                            type="text"
-                            value={dadosCadastrais.alergia_medicamento || ''}
-                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, alergia_medicamento: e.target.value })}
-                            placeholder="Ex: Dipirona, Penicilina (ou Nenhuma)"
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                            Alergia a Alimentos
-                          </label>
-                          <input
-                            type="text"
-                            value={dadosCadastrais.alergia_alimento || ''}
-                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, alergia_alimento: e.target.value })}
-                            placeholder="Ex: Amendoim, Frutos do mar (ou Nenhuma)"
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                            Tratamento / Medicamento Contínuo
-                          </label>
-                          <input
-                            type="text"
-                            value={dadosCadastrais.medicamento_continuo || ''}
-                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, medicamento_continuo: e.target.value })}
-                            placeholder="Ex: Insulina, Ritalina (ou Nenhum)"
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                          />
-                        </div>
-                      </div>
-                    )}
 
-                    {/* ABA 3: DIVERSIDADE & PESSOAL */}
-                    {abaCadastral === 'diversidade' && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                            Nome Civil Completo
-                          </label>
-                          <input
-                            type="text"
-                            value={dadosCadastrais.nome_civil || ''}
-                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, nome_civil: e.target.value })}
-                            placeholder="Nome de registro"
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                          />
+                        <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100">
+                          <span className="text-gray-400 text-[10px] font-bold uppercase block">Membresia Internacional</span>
+                          <span className={`font-bold ${dadosCadastrais?.membresia_ieee ? 'text-indigo-700' : 'text-gray-600'}`}>
+                            {dadosCadastrais?.membresia_ieee ? 'Sim (Membro Ativo)' : 'Não possui'}
+                          </span>
                         </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                            Nome Social / Preferencial
-                          </label>
-                          <input
-                            type="text"
-                            value={dadosCadastrais.nome_social || ''}
-                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, nome_social: e.target.value })}
-                            placeholder="Como prefere ser chamado(a)"
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                            Data de Nascimento
-                          </label>
-                          <input
-                            type="date"
-                            value={dadosCadastrais.data_nascimento || ''}
-                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, data_nascimento: e.target.value })}
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                            CPF
-                          </label>
-                          <input
-                            type="text"
-                            value={dadosCadastrais.cpf || ''}
-                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, cpf: e.target.value })}
-                            placeholder="000.000.000-00"
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                            Identificação Étnico-Racial
-                          </label>
-                          <select
-                            value={dadosCadastrais.etnia || ''}
-                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, etnia: e.target.value })}
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                          >
-                            <option value="">Selecione...</option>
-                            <option value="Branca">Branca</option>
-                            <option value="Preta">Preta</option>
-                            <option value="Parda">Parda</option>
-                            <option value="Amarela">Amarela</option>
-                            <option value="Indígena">Indígena</option>
-                            <option value="Não declarada">Prefiro não declarar</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                            Pessoa com Deficiência (PCD) / Neurodivergência
-                          </label>
-                          <input
-                            type="text"
-                            value={dadosCadastrais.neuroatipicidade || ''}
-                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, neuroatipicidade: e.target.value })}
-                            placeholder="Ex: TDAH, Autismo, Baixa visão (ou Não)"
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                          />
-                        </div>
-                      </div>
-                    )}
 
-                    {/* ABA 4: VÍNCULO IEEE */}
-                    {abaCadastral === 'ieee' && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                            Tempo no Ramo Estudantil IEEE
-                          </label>
-                          <input
-                            type="text"
-                            value={dadosCadastrais.tempo_ramo || ''}
-                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, tempo_ramo: e.target.value })}
-                            placeholder="Ex: 1 ano e 6 meses (ou 1º período)"
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                          />
+                        <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100">
+                          <span className="text-gray-400 text-[10px] font-bold uppercase block">Nº de Membro IEEE</span>
+                          <span className="font-bold text-gray-800 font-mono">
+                            {dadosCadastrais?.numero_membro_ieee || 'N/A'}
+                          </span>
                         </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                            Possui Membresia IEEE Internacional?
-                          </label>
-                          <select
-                            value={dadosCadastrais.membresia_ieee ? 'sim' : 'nao'}
-                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, membresia_ieee: e.target.value === 'sim' })}
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                          >
-                            <option value="nao">Não</option>
-                            <option value="sim">Sim, membro ativo</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                            Número de Membro IEEE (Member ID)
-                          </label>
-                          <input
-                            type="text"
-                            value={dadosCadastrais.numero_membro_ieee || ''}
-                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, numero_membro_ieee: e.target.value })}
-                            placeholder="Ex: 98765432"
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                            Capítulos e Sociedades Associadas
-                          </label>
-                          <input
-                            type="text"
-                            value={dadosCadastrais.capitulos_ieee || ''}
-                            onChange={(e) => setDadosCadastrais({ ...dadosCadastrais, capitulos_ieee: e.target.value })}
-                            placeholder="Ex: Computer Society (CS), PES, RAS, WIE"
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                          />
+
+                        <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100 col-span-full">
+                          <span className="text-gray-400 text-[10px] font-bold uppercase block mb-1">
+                            Capítulos & Sociedades Associadas
+                          </span>
+                          <div className="flex flex-wrap gap-1.5 mt-1">
+                            {dadosCadastrais?.capitulos_ieee && dadosCadastrais.capitulos_ieee !== 'Nenhum' ? (
+                              dadosCadastrais.capitulos_ieee.split(',').map((cap: string) => (
+                                <span
+                                  key={cap}
+                                  className="px-2.5 py-1 bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold rounded-lg text-[10px]"
+                                >
+                                  {cap.trim()}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-gray-400 font-medium">Nenhum capítulo informado</span>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    )}
-                  </form>
+                    </div>
+                  </div>
                 )}
               </div>
             )}
@@ -2784,23 +2700,24 @@ export default function PortalIEEEApp({
       )}
 
       {/* ========================================================================= */}
-      {/* 8. MODAL FICHA CADASTRAL DO MEMBRO (GESTOR / ADMIN) */}
+      {/* 8. MODAL FICHA CADASTRAL COMPLETA DO MEMBRO (GESTOR / ADMIN) */}
       {/* ========================================================================= */}
       {modalFichaAberto && membroFicha && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-[999] flex items-center justify-center p-4 text-left">
-          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl flex flex-col overflow-hidden">
-            <div className="bg-slate-900 p-5 text-white flex items-center justify-between">
+        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-[999] flex items-center justify-center p-3 sm:p-4 text-left animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl flex flex-col max-h-[85vh] overflow-hidden border border-slate-100">
+            {/* CABEÇALHO */}
+            <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-950 p-4 sm:p-5 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-bold text-lg shadow-md">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-lg shadow-md border border-white/20">
                   {membroFicha.nome.charAt(0)}
                 </div>
                 <div>
-                  <span className="text-[9px] bg-blue-500/30 text-blue-200 font-extrabold uppercase px-2 py-0.5 rounded">
-                    Gestão de Pessoas
+                  <span className="text-[9px] bg-blue-500/30 text-blue-200 font-extrabold uppercase px-2 py-0.5 rounded border border-blue-400/30">
+                    Ficha de Membro • GP
                   </span>
                   <h4 className="font-headline font-bold text-base leading-snug mt-0.5">{membroFicha.nome}</h4>
                   <p className="text-[11px] text-blue-200 font-medium">
-                    Matrícula: {membroFicha.matricula} • {membroFicha.cargo}
+                    Matrícula: {membroFicha.matricula} • {membroFicha.cargo || 'Membro'}
                   </p>
                 </div>
               </div>
@@ -2813,27 +2730,123 @@ export default function PortalIEEEApp({
               </button>
             </div>
 
-            <div className="p-6 space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 bg-gray-50 rounded-xl border">
-                  <span className="text-gray-400 font-bold text-[10px] uppercase block">Equipe</span>
-                  <span className="font-bold text-gray-800">{membroFicha.equipe}</span>
-                </div>
-                <div className="p-3 bg-gray-50 rounded-xl border">
-                  <span className="text-gray-400 font-bold text-[10px] uppercase block">Status</span>
-                  <span className="font-bold text-emerald-600">{membroFicha.status}</span>
-                </div>
-              </div>
-              <p className="text-gray-500">
-                Ficha cadastral completa com dados de saúde, emergência e histórico de atuação no Ramo IEEE.
-              </p>
+            {/* ABAS DA FICHA DO MEMBRO */}
+            <div className="bg-slate-50 border-b border-slate-200/80 p-2 shrink-0 flex items-center justify-around gap-1 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setAbaFichaMembro('pessoais')}
+                className={`flex-1 py-1.5 px-2 rounded-xl transition-all cursor-pointer ${
+                  abaFichaMembro === 'pessoais' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:bg-white'
+                }`}
+              >
+                1. Pessoais
+              </button>
+              <button
+                type="button"
+                onClick={() => setAbaFichaMembro('saude')}
+                className={`flex-1 py-1.5 px-2 rounded-xl transition-all cursor-pointer ${
+                  abaFichaMembro === 'saude' ? 'bg-red-600 text-white shadow-xs' : 'text-slate-600 hover:bg-white'
+                }`}
+              >
+                2. Saúde
+              </button>
+              <button
+                type="button"
+                onClick={() => setAbaFichaMembro('ieee')}
+                className={`flex-1 py-1.5 px-2 rounded-xl transition-all cursor-pointer ${
+                  abaFichaMembro === 'ieee' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:bg-white'
+                }`}
+              >
+                3. Acadêmico / IEEE
+              </button>
             </div>
 
-            <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end">
+            {/* CORPO DA FICHA */}
+            <div className="p-5 overflow-y-auto flex-1 space-y-3 text-xs">
+              {abaFichaMembro === 'pessoais' && (
+                <div className="space-y-3 animate-in fade-in duration-100">
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="text-gray-400 font-bold text-[10px] uppercase block">Nome Civil</span>
+                      <span className="font-bold text-gray-800">{membroFicha.nome}</span>
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="text-gray-400 font-bold text-[10px] uppercase block">Matrícula</span>
+                      <span className="font-mono font-bold text-gray-800">{membroFicha.matricula}</span>
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="text-gray-400 font-bold text-[10px] uppercase block">Equipe</span>
+                      <span className="font-bold text-gray-800">{membroFicha.equipe || 'Geral'}</span>
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="text-gray-400 font-bold text-[10px] uppercase block">Status</span>
+                      <span className="font-bold text-emerald-600">{membroFicha.status || 'Ativo'}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {abaFichaMembro === 'saude' && (
+                <div className="space-y-3 animate-in fade-in duration-100">
+                  <div className="p-3 bg-red-50/60 rounded-xl border border-red-100 flex items-center justify-between">
+                    <div>
+                      <span className="text-red-700 text-[10px] font-bold uppercase block">Tipo Sanguíneo</span>
+                      <span className="font-extrabold text-base text-red-900">
+                        {membroFicha.tipo_sanguineo || 'Não informado'}
+                      </span>
+                    </div>
+                    <span className="material-symbols-outlined text-2xl text-red-300">bloodtype</span>
+                  </div>
+
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <span className="text-gray-400 font-bold text-[10px] uppercase block">Contato de Emergência</span>
+                    <span className="font-bold text-gray-800">
+                      {membroFicha.emergencia_nome || 'Não cadastrado'}
+                      {membroFicha.emergencia_telefone ? ` • ${membroFicha.emergencia_telefone}` : ''}
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <span className="text-gray-400 font-bold text-[10px] uppercase block">Alergias & Restrições</span>
+                    <span className="font-semibold text-gray-700">
+                      {membroFicha.alergia_medicamento || 'Nenhuma alergia relatada'}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {abaFichaMembro === 'ieee' && (
+                <div className="space-y-3 animate-in fade-in duration-100">
+                  <div className="p-3 bg-indigo-50/60 rounded-xl border border-indigo-100">
+                    <span className="text-indigo-700 font-bold text-[10px] uppercase block">Curso CEFET-RJ</span>
+                    <span className="font-bold text-indigo-900">
+                      {detectarCursoDaMatricula(membroFicha.matricula) || 'Não detectado'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="text-gray-400 font-bold text-[10px] uppercase block">Período Sugerido</span>
+                      <span className="font-bold text-gray-800">
+                        {sugerirPeriodoDaMatricula(membroFicha.matricula)}
+                      </span>
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="text-gray-400 font-bold text-[10px] uppercase block">Membresia IEEE</span>
+                      <span className="font-bold text-indigo-600">
+                        {membroFicha.membresia_ieee ? 'Membro Pagante' : 'Membro Ramo'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
               <button
                 type="button"
                 onClick={() => setModalFichaAberto(false)}
-                className="px-4 py-2 bg-gray-200 text-gray-700 font-bold rounded-xl text-xs hover:bg-gray-300 cursor-pointer"
+                className="px-4 py-2 bg-slate-200 text-slate-700 font-bold rounded-xl text-xs hover:bg-slate-300 cursor-pointer transition-colors"
               >
                 Fechar
               </button>
@@ -3000,6 +3013,15 @@ export default function PortalIEEEApp({
           </div>
         </div>
       )}
+      {/* 11. MODAL WIZARD DE ATUALIZAÇÃO CADASTRAL DO MEMBRO (3 PASSOS) */}
+      {/* ========================================================================= */}
+      <ModalAtualizacaoCadastral
+        aberto={modalAtualizacaoCadastralAberto}
+        onClose={() => setModalAtualizacaoCadastralAberto(false)}
+        usuario={usuario}
+        dadosIniciais={dadosCadastrais}
+        onSalvoComSucesso={(novosDados) => setDadosCadastrais(novosDados)}
+      />
     </div>
   )
 }

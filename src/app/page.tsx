@@ -125,6 +125,7 @@ export default async function HomePage() {
         cargos: cargos.map((c: any) => c?.nome_cargo).filter(Boolean),
         podeGerenciarSala,
       }}
+      dadosCadastraisIniciais={dadosMembroRecord || null}
       statusSala={{
         aberta: estaAberta,
         ultimoResponsavel:
