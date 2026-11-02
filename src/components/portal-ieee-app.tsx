@@ -36,6 +36,7 @@ import {
 } from '@/app/agenda/actions'
 import { SeletorPublico } from './agenda/seletor-publico'
 import { PainelRecomendacaoPCH } from './agenda/painel-recomendacao-pch'
+import { FormularioContextoPse } from './agenda/formulario-contexto-pse'
 import {
   ConfiguradorListasAgenda,
   SALAS_PADRAO,
@@ -4410,171 +4411,195 @@ export default function PortalIEEEApp({
                   </button>
                 </div>
 
-                {/* 1. SELETOR GRANULAR DE PÚBLICO-ALVO (4 DIMENSÕES) */}
-                <SeletorPublico
-                  config={publicoConfig}
-                  onChange={setPublicoConfig}
-                  todosMembros={todosMembrosPch}
-                  usuarioAtual={{
-                    id: usuario.id,
-                    matricula: usuario.matricula,
-                    nome: usuario.nome,
-                    equipe: usuario.cargos[0]?.split('•')[1]?.trim() || 'Geral',
-                    cargo: usuario.cargos[0]?.split('•')[0]?.trim() || 'Membro',
-                    nivelAcesso: usuario.tipo_membro === 'Trainee' ? 'TRAINEE' : 'MEMBRO',
-                  }}
-                  participantesResolvidos={participantesResolvidos}
-                />
+                {/* RENDERIZAÇÃO CONDICIONAL POR CONTEXTO */}
+                {formNovoEvento.contexto === 'Processo Trainee (PSE)' ? (
+                  <FormularioContextoPse
+                    tipoEvento={formNovoEvento.tipo_evento}
+                    formNovoEvento={formNovoEvento}
+                    setFormNovoEvento={setFormNovoEvento}
+                    usuario={usuario}
+                    todosMembros={todosMembrosPch}
+                    pchsPorMembro={pchsPorMembro}
+                    catalogoCursos={catalogoCursos}
+                    configSalas={configSalas}
+                    eventosExistentes={eventosAgenda}
+                    onAtualizarParticipantes={(parts) =>
+                      setPublicoConfig((prev) => ({
+                        ...prev,
+                        modo: 'personalizado',
+                        membros_especificos: parts.map((p) => p.matricula),
+                      }))
+                    }
+                  />
+                ) : (
+                  <>
+                    {/* 1. SELETOR GRANULAR DE PÚBLICO-ALVO (4 DIMENSÕES) */}
+                    <SeletorPublico
+                      config={publicoConfig}
+                      onChange={setPublicoConfig}
+                      todosMembros={todosMembrosPch}
+                      usuarioAtual={{
+                        id: usuario.id,
+                        matricula: usuario.matricula,
+                        nome: usuario.nome,
+                        equipe: usuario.cargos[0]?.split('•')[1]?.trim() || 'Geral',
+                        cargo: usuario.cargos[0]?.split('•')[0]?.trim() || 'Membro',
+                        nivelAcesso: usuario.tipo_membro === 'Trainee' ? 'TRAINEE' : 'MEMBRO',
+                      }}
+                      participantesResolvidos={participantesResolvidos}
+                    />
 
-                {/* 2. MOTOR DE RECOMENDAÇÃO PCH ("SLOTS DE OURO") */}
-                <PainelRecomendacaoPCH
-                  slots={slotsRecomendados}
-                  modalidade={formNovoEvento.modalidade}
-                  totalParticipantes={participantesResolvidos.length}
-                  isCalculando={isCarregandoPchMembros}
-                  onSelecionarSlot={(slot) => {
-                    setFormNovoEvento((prev) => ({
-                      ...prev,
-                      data: slot.dataSugerida,
-                      hora_inicio: slot.horarioInicio,
-                      hora_fim: slot.horarioFim,
-                    }))
-                  }}
-                  onAbrirGradeCompleta={() => {
-                    setActiveTab('disponibilidade')
-                    setModalNovaCapAberto(false)
-                  }}
-                />
+                    {/* 2. MOTOR DE RECOMENDAÇÃO PCH ("SLOTS DE OURO") */}
+                    <PainelRecomendacaoPCH
+                      slots={slotsRecomendados}
+                      modalidade={formNovoEvento.modalidade}
+                      totalParticipantes={participantesResolvidos.length}
+                      isCalculando={isCarregandoPchMembros}
+                      onSelecionarSlot={(slot) => {
+                        setFormNovoEvento((prev) => ({
+                          ...prev,
+                          data: slot.dataSugerida,
+                          hora_inicio: slot.horarioInicio,
+                          hora_fim: slot.horarioFim,
+                        }))
+                      }}
+                      onAbrirGradeCompleta={() => {
+                        setActiveTab('disponibilidade')
+                        setModalNovaCapAberto(false)
+                      }}
+                    />
 
-                {/* 3. CONFIRMAÇÃO DE DATA, HORÁRIOS E LOCAL */}
-                <div className="bg-white border border-gray-200 rounded-2xl p-4 space-y-3">
-                  <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">
-                    Horário & Local do Compromisso
-                  </h4>
+                    {/* 3. CONFIRMAÇÃO DE DATA, HORÁRIOS E LOCAL */}
+                    <div className="bg-white border border-gray-200 rounded-2xl p-4 space-y-3">
+                      <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">
+                        Horário & Local do Compromisso
+                      </h4>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Data *</label>
-                      <input
-                        type="date"
-                        value={formNovoEvento.data}
-                        onChange={(e) => setFormNovoEvento({ ...formNovoEvento, data: e.target.value })}
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                        Início / Fim *
-                      </label>
-                      <div className="flex items-center gap-1">
-                        <input
-                          type="text"
-                          value={formNovoEvento.hora_inicio}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Data *</label>
+                          <input
+                            type="date"
+                            value={formNovoEvento.data}
+                            onChange={(e) => setFormNovoEvento({ ...formNovoEvento, data: e.target.value })}
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            Início / Fim *
+                          </label>
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="text"
+                              value={formNovoEvento.hora_inicio}
+                              onChange={(e) =>
+                                setFormNovoEvento({ ...formNovoEvento, hora_inicio: e.target.value })
+                              }
+                              placeholder="14:00"
+                              className="w-1/2 bg-gray-50 border border-gray-200 rounded-xl p-2 text-xs font-bold text-center outline-none focus:ring-2 focus:ring-primary"
+                            />
+                            <span className="text-gray-400">-</span>
+                            <input
+                              type="text"
+                              value={formNovoEvento.hora_fim}
+                              onChange={(e) =>
+                                setFormNovoEvento({ ...formNovoEvento, hora_fim: e.target.value })
+                              }
+                              placeholder="16:00"
+                              className="w-1/2 bg-gray-50 border border-gray-200 rounded-xl p-2 text-xs font-bold text-center outline-none focus:ring-2 focus:ring-primary"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Modalidade</label>
+                          <select
+                            value={formNovoEvento.modalidade}
+                            onChange={(e) =>
+                              setFormNovoEvento({
+                                ...formNovoEvento,
+                                modalidade: e.target.value as any,
+                                local_link:
+                                  e.target.value === 'Presencial'
+                                    ? configSalas[0] || 'E-213 - Sala do Ramo'
+                                    : 'https://teams.microsoft.com',
+                              })
+                            }
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                          >
+                            <option value="Presencial">Presencial</option>
+                            <option value="Online">Online</option>
+                            <option value="Gravada">Gravada</option>
+                            <option value="Híbrido">Híbrido</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            {formNovoEvento.modalidade === 'Presencial' ? 'Sala Física (Local) *' : 'Link da Reunião Online *'}
+                          </label>
+                          {formNovoEvento.modalidade === 'Presencial' ? (
+                            <select
+                              value={formNovoEvento.local_link}
+                              onChange={(e) =>
+                                setFormNovoEvento({ ...formNovoEvento, local_link: e.target.value })
+                              }
+                              className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-primary"
+                            >
+                              {configSalas.map((sala) => (
+                                <option key={sala} value={sala}>
+                                  {sala}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              type="text"
+                              value={formNovoEvento.local_link}
+                              onChange={(e) =>
+                                setFormNovoEvento({ ...formNovoEvento, local_link: e.target.value })
+                              }
+                              placeholder="Ex: https://teams.microsoft.com/... ou Google Meet"
+                              className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
+                            />
+                          )}
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                            Facilitador(es) / Ministrante(s)
+                          </label>
+                          <input
+                            type="text"
+                            value={formNovoEvento.ministrantes}
+                            onChange={(e) =>
+                              setFormNovoEvento({ ...formNovoEvento, ministrantes: e.target.value })
+                            }
+                            placeholder="Nomes separados por vírgula"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Pauta / Descrição */}
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                          Pauta / Descrição do Compromisso (Opcional)
+                        </label>
+                        <textarea
+                          value={formNovoEvento.descricao}
                           onChange={(e) =>
-                            setFormNovoEvento({ ...formNovoEvento, hora_inicio: e.target.value })
+                            setFormNovoEvento({ ...formNovoEvento, descricao: e.target.value })
                           }
-                          placeholder="14:00"
-                          className="w-1/2 bg-gray-50 border border-gray-200 rounded-xl p-2 text-xs font-bold text-center outline-none focus:ring-2 focus:ring-primary"
-                        />
-                        <span className="text-gray-400">-</span>
-                        <input
-                          type="text"
-                          value={formNovoEvento.hora_fim}
-                          onChange={(e) =>
-                            setFormNovoEvento({ ...formNovoEvento, hora_fim: e.target.value })
-                          }
-                          placeholder="16:00"
-                          className="w-1/2 bg-gray-50 border border-gray-200 rounded-xl p-2 text-xs font-bold text-center outline-none focus:ring-2 focus:ring-primary"
+                          placeholder="Detalhes, objetivos da reunião, materiais prévios..."
+                          className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
+                          rows={2}
                         />
                       </div>
                     </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Modalidade</label>
-                      <select
-                        value={formNovoEvento.modalidade}
-                        onChange={(e) =>
-                          setFormNovoEvento({
-                            ...formNovoEvento,
-                            modalidade: e.target.value as any,
-                            local_link:
-                              e.target.value === 'Presencial'
-                                ? configSalas[0] || 'E-213 - Sala do Ramo'
-                                : 'https://teams.microsoft.com',
-                          })
-                        }
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                      >
-                        <option value="Presencial">Presencial</option>
-                        <option value="Online">Online</option>
-                        <option value="Gravada">Gravada</option>
-                        <option value="Híbrido">Híbrido</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                        {formNovoEvento.modalidade === 'Presencial' ? 'Sala Física (Local) *' : 'Link da Reunião Online *'}
-                      </label>
-                      {formNovoEvento.modalidade === 'Presencial' ? (
-                        <select
-                          value={formNovoEvento.local_link}
-                          onChange={(e) =>
-                            setFormNovoEvento({ ...formNovoEvento, local_link: e.target.value })
-                          }
-                          className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-primary"
-                        >
-                          {configSalas.map((sala) => (
-                            <option key={sala} value={sala}>
-                              {sala}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input
-                          type="text"
-                          value={formNovoEvento.local_link}
-                          onChange={(e) =>
-                            setFormNovoEvento({ ...formNovoEvento, local_link: e.target.value })
-                          }
-                          placeholder="Ex: https://teams.microsoft.com/... ou Google Meet"
-                          className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
-                        />
-                      )}
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                        Facilitador(es) / Ministrante(s)
-                      </label>
-                      <input
-                        type="text"
-                        value={formNovoEvento.ministrantes}
-                        onChange={(e) =>
-                          setFormNovoEvento({ ...formNovoEvento, ministrantes: e.target.value })
-                        }
-                        placeholder="Nomes separados por vírgula"
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Pauta / Descrição */}
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                      Pauta / Descrição do Compromisso (Opcional)
-                    </label>
-                    <textarea
-                      value={formNovoEvento.descricao}
-                      onChange={(e) =>
-                        setFormNovoEvento({ ...formNovoEvento, descricao: e.target.value })
-                      }
-                      placeholder="Detalhes, objetivos da reunião, materiais prévios..."
-                      className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
-                      rows={2}
-                    />
-                  </div>
-                </div>
+                  </>
+                )}
 
                 {/* Botões do Passo 2 */}
                 <div className="flex gap-2 pt-3 border-t border-gray-100">
