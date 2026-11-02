@@ -16,6 +16,19 @@ import FormAtualizacaoCadastralInline, {
 import SecaoCargosSlots from './secao-cargos-slots'
 import FilaSolicitacoesGP from './fila-solicitacoes-gp'
 import { detectarCursoDaMatricula, sugerirPeriodoDaMatricula } from '@/lib/curso-matricula'
+import {
+  obterAgendaAction,
+  salvarCapacitacaoAction,
+  cancelarCapacitacaoAction,
+  registrarPresencaComAvaliacaoAction,
+  registrarJustificativaAction,
+  obterListaChamadaAction,
+  salvarChamadaMinistranteAction,
+  salvarCursoCatalogoAction,
+  type EventoAgendaItem,
+  type CatalogoCursoItem,
+  type ListaChamadaMembro,
+} from '@/app/agenda/actions'
 
 interface UsuarioProps {
   id: string
@@ -120,6 +133,8 @@ export default function PortalIEEEApp({
   pchInicial = null,
   dadosMembroInicial = null,
   dadosCadastraisIniciais = null,
+  agendaInicial = [],
+  catalogoInicial = [],
 }: {
   usuario: UsuarioProps
   statusSala: StatusSalaProps
@@ -128,6 +143,8 @@ export default function PortalIEEEApp({
   pchInicial?: PchDataProps | null
   dadosMembroInicial?: DadosMembroProps | null
   dadosCadastraisIniciais?: any
+  agendaInicial?: EventoAgendaItem[]
+  catalogoInicial?: CatalogoCursoItem[]
 }) {
   // Estado de navegação principal
   const [activeTab, setActiveTab] = useState<'calendario' | 'disponibilidade' | 'equipe' | 'admin' | 'perfil'>('calendario')
@@ -217,48 +234,347 @@ export default function PortalIEEEApp({
   const [feedbackSenha, setFeedbackSenha] = useState<{ tipo: 'ok' | 'erro'; msg: string } | null>(null)
   const [isSalvandoSenha, setIsSalvandoSenha] = useState(false)
 
-  // Mock de Capacitações / Agenda para visualização pré-migração
-  const capacitacoesMock = [
-    {
-      id: 1,
-      titulo: 'Introdução ao Git e GitHub para Projetos',
-      contexto: 'Processo Trainee',
-      categoria: 'Capacitação Técnica',
-      modalidade: 'Presencial',
-      data: '26/10/2026',
-      horario: '14:00 - 16:00',
-      local: 'Sala do Ramo IEEE (E-204)',
-      ministrante: 'Diretoria de Projetos',
-      status: 'Confirmada',
-      obrigatorio: true,
-    },
-    {
-      id: 2,
-      titulo: 'Gestão Ágil e Scrum com Jira',
-      contexto: 'Ramo Estudantil',
-      categoria: 'Capacitação de Gestão',
-      modalidade: 'Online',
-      data: '28/10/2026',
-      horario: '18:30 - 20:00',
-      local: 'Microsoft Teams',
-      ministrante: 'Gestão de Pessoas',
-      status: 'Inscrições Abertas',
-      obrigatorio: false,
-    },
-    {
-      id: 3,
-      titulo: 'Reunião Geral de Alinhamento 2026.1',
-      contexto: 'Ramo Estudantil',
-      categoria: 'Reunião Geral',
-      modalidade: 'Presencial',
-      data: '31/10/2026',
-      horario: '13:00 - 15:00',
-      local: 'Auditório 2 - Bloco E',
-      ministrante: 'Presidência',
-      status: 'Confirmada',
-      obrigatorio: true,
-    },
-  ]
+  // =========================================================================
+  // MÓDULO 3: CAPACITAÇÕES, AGENDA, PRESENÇAS E CATÁLOGO
+  // =========================================================================
+  const [eventosAgenda, setEventosAgenda] = useState<EventoAgendaItem[]>(agendaInicial || [])
+  const [catalogoCursos, setCatalogoCursos] = useState<CatalogoCursoItem[]>(catalogoInicial || [])
+  const [eventoDetalhes, setEventoDetalhes] = useState<EventoAgendaItem | null>(null)
+  const [modalDetalhesAberto, setModalDetalhesAberto] = useState(false)
+  const [notaAvaliacao, setNotaAvaliacao] = useState<number>(0)
+  const [feedbackAvaliacao, setFeedbackAvaliacao] = useState<string>('')
+  const [justificativaTexto, setJustificativaTexto] = useState<string>('')
+  const [isSalvandoPresenca, setIsSalvandoPresenca] = useState(false)
+  const [feedbackAcaoAgenda, setFeedbackAcaoAgenda] = useState<{ tipo: 'ok' | 'erro'; msg: string } | null>(null)
+
+  // Chamada do Ministrante
+  const [modalChamadaAberto, setModalChamadaAberto] = useState(false)
+  const [listaChamada, setListaChamada] = useState<ListaChamadaMembro[]>([])
+  const [buscaChamada, setBuscaChamada] = useState('')
+  const [isCarregandoChamada, setIsCarregandoChamada] = useState(false)
+  const [isSalvandoChamada, setIsSalvandoChamada] = useState(false)
+
+  // Filtros de Agenda
+  const [filtroPesquisaAgenda, setFiltroPesquisaAgenda] = useState('')
+
+  // Novo Agendamento
+  const [formNovoEvento, setFormNovoEvento] = useState({
+    id: '',
+    id_curso: '',
+    nome_capacitacao: '',
+    data: new Date().toISOString().substring(0, 10),
+    hora_inicio: '14:00',
+    hora_fim: '16:00',
+    ministrantes: usuario.nome || '',
+    modalidade: 'Presencial' as 'Presencial' | 'Online' | 'Gravada' | 'Híbrido',
+    local_link: 'E-213 - Sala do Ramo',
+    equipe_responsavel: 'Geral',
+    tipo_evento: 'Capacitação',
+    publico_alvo: 'Todos do Ramo',
+    contexto: 'Processo Trainee (PSE)',
+    descricao: '',
+  })
+  const [buscaCatalogoCurso, setBuscaCatalogoCurso] = useState('')
+  const [dropdownCatalogoAberto, setDropdownCatalogoAberto] = useState(false)
+  const [isSalvandoEvento, setIsSalvandoEvento] = useState(false)
+
+  // Catálogo (GP)
+  const [modalNovoCursoAberto, setModalNovoCursoAberto] = useState(false)
+  const [formNovoCurso, setFormNovoCurso] = useState({
+    nome_curso: '',
+    equipe_responsavel: 'Geral',
+    status_curso: 'Ativo' as 'Ativo' | 'Inativo',
+    ementa: '',
+    carga_horaria: '2h',
+  })
+  const [isSalvandoCurso, setIsSalvandoCurso] = useState(false)
+  const [filtroPesquisaCatalogo, setFiltroPesquisaCatalogo] = useState('')
+
+  // Handlers Módulo 3
+  const handleRecarregarAgenda = async () => {
+    try {
+      const res = await obterAgendaAction()
+      if (res.sucesso && res.eventos) {
+        setEventosAgenda(res.eventos)
+      }
+      if (res.sucesso && res.catalogo) {
+        setCatalogoCursos(res.catalogo)
+      }
+    } catch (err) {
+      console.error('Erro ao recarregar agenda:', err)
+    }
+  }
+
+  const handleAbrirDetalhes = (evento: EventoAgendaItem) => {
+    setEventoDetalhes(evento)
+    setNotaAvaliacao(evento.Minha_Nota || 0)
+    setFeedbackAvaliacao(evento.Meu_Feedback || '')
+    setJustificativaTexto('')
+    setFeedbackAcaoAgenda(null)
+    setModalDetalhesAberto(true)
+  }
+
+  const handleRegistrarPresenca = async () => {
+    if (!eventoDetalhes) return
+    if (notaAvaliacao === 0) {
+      setFeedbackAcaoAgenda({ tipo: 'erro', msg: 'Por favor, selecione uma nota de 1 a 5 estrelas.' })
+      return
+    }
+    if (!feedbackAvaliacao.trim()) {
+      setFeedbackAcaoAgenda({ tipo: 'erro', msg: 'Por favor, digite seu feedback sobre a didática.' })
+      return
+    }
+
+    setIsSalvandoPresenca(true)
+    setFeedbackAcaoAgenda(null)
+    try {
+      const res = await registrarPresencaComAvaliacaoAction(
+        eventoDetalhes.id,
+        notaAvaliacao,
+        feedbackAvaliacao
+      )
+      if (res.sucesso) {
+        setFeedbackAcaoAgenda({ tipo: 'ok', msg: res.mensagem })
+        // Atualiza estado local
+        setEventosAgenda((prev) =>
+          prev.map((e) =>
+            e.id === eventoDetalhes.id
+              ? {
+                  ...e,
+                  Minha_Presenca: 'Presente',
+                  Minha_Nota: notaAvaliacao,
+                  Meu_Feedback: feedbackAvaliacao,
+                }
+              : e
+          )
+        )
+        setEventoDetalhes((prev) =>
+          prev
+            ? {
+                ...prev,
+                Minha_Presenca: 'Presente',
+                Minha_Nota: notaAvaliacao,
+                Meu_Feedback: feedbackAvaliacao,
+              }
+            : null
+        )
+        handleRecarregarAgenda()
+      } else {
+        setFeedbackAcaoAgenda({ tipo: 'erro', msg: res.mensagem || 'Erro ao registrar presença.' })
+      }
+    } catch (err: any) {
+      setFeedbackAcaoAgenda({ tipo: 'erro', msg: err.message || 'Erro inesperado.' })
+    } finally {
+      setIsSalvandoPresenca(false)
+    }
+  }
+
+  const handleRegistrarJustificativa = async () => {
+    if (!eventoDetalhes) return
+    if (!justificativaTexto.trim()) {
+      setFeedbackAcaoAgenda({ tipo: 'erro', msg: 'Por favor, preencha o motivo da justificativa.' })
+      return
+    }
+
+    setIsSalvandoPresenca(true)
+    setFeedbackAcaoAgenda(null)
+    try {
+      const res = await registrarJustificativaAction(eventoDetalhes.id, justificativaTexto)
+      if (res.sucesso) {
+        setFeedbackAcaoAgenda({ tipo: 'ok', msg: res.mensagem })
+        setEventosAgenda((prev) =>
+          prev.map((e) =>
+            e.id === eventoDetalhes.id ? { ...e, Minha_Presenca: 'Falta Justificada' } : e
+          )
+        )
+        setEventoDetalhes((prev) =>
+          prev ? { ...prev, Minha_Presenca: 'Falta Justificada' } : null
+        )
+        handleRecarregarAgenda()
+      } else {
+        setFeedbackAcaoAgenda({ tipo: 'erro', msg: res.mensagem })
+      }
+    } catch (err: any) {
+      setFeedbackAcaoAgenda({ tipo: 'erro', msg: err.message })
+    } finally {
+      setIsSalvandoPresenca(false)
+    }
+  }
+
+  const handleAbrirChamada = async () => {
+    if (!eventoDetalhes) return
+    setModalChamadaAberto(true)
+    setIsCarregandoChamada(true)
+    setBuscaChamada('')
+    try {
+      const res = await obterListaChamadaAction(eventoDetalhes.id)
+      if (res.sucesso && res.lista) {
+        setListaChamada(res.lista)
+      }
+    } catch (err) {
+      console.error('Erro ao carregar lista de chamada:', err)
+    } finally {
+      setIsCarregandoChamada(false)
+    }
+  }
+
+  const handleTogglePresencaChamada = (matricula: string) => {
+    setListaChamada((prev) =>
+      prev.map((m) => (m.matricula === matricula ? { ...m, presente: !m.presente } : m))
+    )
+  }
+
+  const handleMarcarTodosChamada = (presente: boolean) => {
+    const termo = buscaChamada.toLowerCase()
+    setListaChamada((prev) =>
+      prev.map((m) => {
+        if (!termo || m.nome.toLowerCase().includes(termo) || m.matricula.toLowerCase().includes(termo)) {
+          return { ...m, presente }
+        }
+        return m
+      })
+    )
+  }
+
+  const handleSalvarChamada = async () => {
+    if (!eventoDetalhes) return
+    setIsSalvandoChamada(true)
+    try {
+      const matriculasPresentes = listaChamada.filter((m) => m.presente).map((m) => m.matricula)
+      const res = await salvarChamadaMinistranteAction(eventoDetalhes.id, matriculasPresentes)
+      if (res.sucesso) {
+        setModalChamadaAberto(false)
+        alert(res.mensagem || 'Chamada salva com sucesso!')
+        handleRecarregarAgenda()
+      } else {
+        alert(res.mensagem || 'Erro ao salvar chamada.')
+      }
+    } catch (err: any) {
+      alert('Erro ao salvar chamada: ' + err.message)
+    } finally {
+      setIsSalvandoChamada(false)
+    }
+  }
+
+  const handleSalvarNovoEvento = async () => {
+    if (!formNovoEvento.nome_capacitacao.trim()) {
+      alert('Informe o título do evento.')
+      return
+    }
+    if (!formNovoEvento.data) {
+      alert('Informe a data do evento.')
+      return
+    }
+
+    setIsSalvandoEvento(true)
+    try {
+      const res = await salvarCapacitacaoAction(formNovoEvento)
+      if (res.sucesso) {
+        alert(res.mensagem)
+        setModalNovaCapAberto(false)
+        setFormNovoEvento({
+          id: '',
+          id_curso: '',
+          nome_capacitacao: '',
+          data: new Date().toISOString().substring(0, 10),
+          hora_inicio: '14:00',
+          hora_fim: '16:00',
+          ministrantes: usuario.nome || '',
+          modalidade: 'Presencial',
+          local_link: 'E-213 - Sala do Ramo',
+          equipe_responsavel: 'Geral',
+          tipo_evento: 'Capacitação',
+          publico_alvo: 'Todos do Ramo',
+          contexto: 'Processo Trainee (PSE)',
+          descricao: '',
+        })
+        handleRecarregarAgenda()
+      } else {
+        alert(res.mensagem || 'Erro ao salvar evento.')
+      }
+    } catch (err: any) {
+      alert('Erro inesperado: ' + err.message)
+    } finally {
+      setIsSalvandoEvento(false)
+    }
+  }
+
+  const handleCancelarEvento = async () => {
+    if (!eventoDetalhes) return
+    if (!confirm(`Tem certeza que deseja cancelar o compromisso "${eventoDetalhes.nome_capacitacao}"?`)) {
+      return
+    }
+
+    try {
+      const res = await cancelarCapacitacaoAction(eventoDetalhes.id)
+      if (res.sucesso) {
+        alert(res.mensagem)
+        setModalDetalhesAberto(false)
+        setEventosAgenda((prev) => prev.filter((e) => e.id !== eventoDetalhes.id))
+        handleRecarregarAgenda()
+      } else {
+        alert(res.mensagem)
+      }
+    } catch (err: any) {
+      alert('Erro: ' + err.message)
+    }
+  }
+
+  const handleSalvarNovoCursoCatalogo = async () => {
+    if (!formNovoCurso.nome_curso.trim()) {
+      alert('Informe o nome do curso.')
+      return
+    }
+
+    setIsSalvandoCurso(true)
+    try {
+      const res = await salvarCursoCatalogoAction(formNovoCurso)
+      if (res.sucesso) {
+        alert(res.mensagem)
+        setModalNovoCursoAberto(false)
+        setFormNovoCurso({
+          nome_curso: '',
+          equipe_responsavel: 'Geral',
+          status_curso: 'Ativo',
+          ementa: '',
+          carga_horaria: '2h',
+        })
+        handleRecarregarAgenda()
+      } else {
+        alert(res.mensagem)
+      }
+    } catch (err: any) {
+      alert('Erro: ' + err.message)
+    } finally {
+      setIsSalvandoCurso(false)
+    }
+  }
+
+  const handleExportarRelatorioPresencas = () => {
+    const cabecalho = ['ID_Capacitacao', 'Nome_Capacitacao', 'Data', 'Horario', 'Modalidade', 'Ministrantes', 'Equipe_Responsavel', 'Tipo_Evento', 'Publico_Alvo', 'Status']
+    const linhas = eventosAgenda.map((e) => [
+      `"${e.id}"`,
+      `"${e.nome_capacitacao.replace(/"/g, '""')}"`,
+      `"${e.data}"`,
+      `"${e.hora_inicio} - ${e.hora_fim}"`,
+      `"${e.modalidade}"`,
+      `"${(e.ministrantes || '').replace(/"/g, '""')}"`,
+      `"${e.equipe_responsavel}"`,
+      `"${e.tipo_evento}"`,
+      `"${e.publico_alvo}"`,
+      `"${e.status}"`,
+    ])
+
+    const csvContent = [cabecalho.join(','), ...linhas.map((l) => l.join(','))].join('\n')
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `Relatorio_Capacitacoes_IEEE_${new Date().toISOString().substring(0, 10)}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
 
   // Mock de Integrantes da Equipe
   const membrosEquipeMock = [
@@ -631,44 +947,73 @@ export default function PortalIEEEApp({
         {activeTab === 'calendario' && (
           <div id="view-calendario" className="pb-6">
             <div className="flex justify-between items-center mb-3 mt-2">
-              <h2 className="text-2xl font-headline font-bold text-gray-800">Agenda</h2>
-              <button
-                type="button"
-                onClick={() => setModoVisaoAgenda(modoVisaoAgenda === 'lista' ? 'grid' : 'lista')}
-                className="text-gray-400 hover:text-primary transition-colors bg-white p-2 rounded-xl shadow-xs border border-gray-100 cursor-pointer"
-                title={modoVisaoAgenda === 'lista' ? 'Mudar para Visão Mensal' : 'Mudar para Visão Lista'}
-              >
-                <span className="material-symbols-outlined text-[22px]">
-                  {modoVisaoAgenda === 'lista' ? 'calendar_month' : 'format_list_bulleted'}
-                </span>
-              </button>
+              <div>
+                <h2 className="text-2xl font-headline font-bold text-gray-800">Agenda & Treinamentos</h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Acompanhe capacitações, registre presenças e avalie a didática dos facilitadores.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleRecarregarAgenda}
+                  className="text-gray-400 hover:text-primary transition-colors bg-white p-2 rounded-xl shadow-xs border border-gray-100 cursor-pointer"
+                  title="Atualizar agenda"
+                >
+                  <span className="material-symbols-outlined text-[20px]">refresh</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModoVisaoAgenda(modoVisaoAgenda === 'lista' ? 'grid' : 'lista')}
+                  className="text-gray-400 hover:text-primary transition-colors bg-white p-2 rounded-xl shadow-xs border border-gray-100 cursor-pointer"
+                  title={modoVisaoAgenda === 'lista' ? 'Mudar para Visão Mensal' : 'Mudar para Visão Lista'}
+                >
+                  <span className="material-symbols-outlined text-[22px]">
+                    {modoVisaoAgenda === 'lista' ? 'calendar_month' : 'format_list_bulleted'}
+                  </span>
+                </button>
+              </div>
             </div>
 
-            {/* FILTROS DA AGENDA (MASTER CALENDAR) */}
-            <div className="mb-4 bg-white border border-gray-100 rounded-2xl p-4 shadow-xs flex flex-col sm:flex-row gap-3 items-end">
-              <div className="w-full sm:w-1/3">
+            {/* BARRA DE FILTROS E BUSCA */}
+            <div className="mb-4 bg-white border border-gray-100 rounded-2xl p-4 shadow-xs flex flex-col md:flex-row gap-3 items-stretch md:items-end">
+              <div className="flex-1">
+                <label className="text-[10px] font-bold text-gray-400 uppercase ml-1 block">Pesquisar</label>
+                <div className="relative mt-1">
+                  <span className="material-symbols-outlined absolute left-3 top-2.5 text-gray-400 text-sm">search</span>
+                  <input
+                    type="text"
+                    value={filtroPesquisaAgenda}
+                    onChange={(e) => setFiltroPesquisaAgenda(e.target.value)}
+                    placeholder="Título, ministrante ou assunto..."
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-xs font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+              </div>
+              <div className="w-full md:w-48">
                 <label className="text-[10px] font-bold text-gray-400 uppercase ml-1 block">Contexto</label>
                 <select
                   value={filtroContextoAgenda}
                   onChange={(e) => setFiltroContextoAgenda(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-primary mt-1"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2 text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-primary mt-1"
                 >
                   <option value="TODOS">Todos os Contextos</option>
-                  <option value="Processo Trainee">Processo Trainee (PSE)</option>
-                  <option value="Ramo Estudantil">Ramo Estudantil IEEE</option>
+                  <option value="Processo Trainee (PSE)">Processo Trainee (PSE)</option>
+                  <option value="Ramo Estudantil (Capítulos / Equipes)">Ramo Estudantil</option>
                 </select>
               </div>
-              <div className="w-full sm:w-1/3">
+              <div className="w-full md:w-40">
                 <label className="text-[10px] font-bold text-gray-400 uppercase ml-1 block">Modalidade</label>
                 <select
                   value={filtroModalidadeAgenda}
                   onChange={(e) => setFiltroModalidadeAgenda(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-primary mt-1"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2 text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-primary mt-1"
                 >
-                  <option value="TODOS">Qualquer Modalidade</option>
+                  <option value="TODOS">Qualquer</option>
                   <option value="Presencial">Presencial</option>
                   <option value="Online">Online</option>
                   <option value="Gravada">Gravada</option>
+                  <option value="Híbrido">Híbrido</option>
                 </select>
               </div>
               <div>
@@ -677,91 +1022,316 @@ export default function PortalIEEEApp({
                   onClick={() => {
                     setFiltroContextoAgenda('TODOS')
                     setFiltroModalidadeAgenda('TODOS')
+                    setFiltroPesquisaAgenda('')
                   }}
-                  className="h-[38px] px-4 bg-gray-100 text-gray-600 font-bold text-xs rounded-xl hover:bg-gray-200 transition-colors flex items-center justify-center whitespace-nowrap shadow-xs cursor-pointer"
+                  className="h-[36px] px-3 bg-gray-100 text-gray-600 font-bold text-xs rounded-xl hover:bg-gray-200 transition-colors flex items-center justify-center whitespace-nowrap shadow-xs cursor-pointer"
                 >
                   Limpar
                 </button>
               </div>
             </div>
 
-            {/* MODO LISTA */}
-            {modoVisaoAgenda === 'lista' && (
-              <div className="space-y-3">
-                {capacitacoesMock
-                  .filter((c) => {
-                    if (filtroContextoAgenda !== 'TODOS' && c.contexto !== filtroContextoAgenda) return false
-                    if (filtroModalidadeAgenda !== 'TODOS' && c.modalidade !== filtroModalidadeAgenda) return false
-                    return true
-                  })
-                  .map((item) => (
-                    <div
-                      key={item.id}
-                      className="bg-white p-5 rounded-2xl shadow-xs border border-gray-100 hover:border-blue-200 transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
-                    >
-                      <div className="space-y-1.5 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-blue-50 text-primary border border-blue-100">
-                            {item.categoria}
+            {/* MODO LISTA CATEGORIZADA */}
+            {modoVisaoAgenda === 'lista' && (() => {
+              const agora = new Date()
+
+              // Filtra primeiro
+              const eventosFiltrados = eventosAgenda.filter((ev) => {
+                if (filtroContextoAgenda !== 'TODOS' && ev.contexto !== filtroContextoAgenda) return false
+                if (filtroModalidadeAgenda !== 'TODOS' && ev.modalidade !== filtroModalidadeAgenda) return false
+                if (filtroPesquisaAgenda.trim()) {
+                  const termo = filtroPesquisaAgenda.toLowerCase()
+                  const tit = ev.nome_capacitacao.toLowerCase()
+                  const min = (ev.ministrantes || '').toLowerCase()
+                  const eq = (ev.equipe_responsavel || '').toLowerCase()
+                  if (!tit.includes(termo) && !min.includes(termo) && !eq.includes(termo)) return false
+                }
+                return true
+              })
+
+              const acoesNecessarias: EventoAgendaItem[] = []
+              const proximosTreinamentos: EventoAgendaItem[] = []
+              const opcionais: EventoAgendaItem[] = []
+              const historico: EventoAgendaItem[] = []
+
+              eventosFiltrados.forEach((c) => {
+                const dtStr = (c.data || '').substring(0, 10)
+                const ini = new Date(`${dtStr}T${c.hora_inicio || '00:00'}:00`)
+                const fim = new Date(`${dtStr}T${c.hora_fim || '23:59'}:00`)
+                const diffIni = (agora.getTime() - ini.getTime()) / (1000 * 60 * 60)
+                const diffFim = (agora.getTime() - fim.getTime()) / (1000 * 60 * 60)
+
+                const statusPresenca = String(c.Minha_Presenca || '').toLowerCase()
+                const temNota = Boolean(c.Minha_Nota && c.Minha_Nota > 0)
+                const presencaOk = statusPresenca === 'presente' || temNota
+                const justificativaOk = statusPresenca.includes('justific')
+                const concluidoPeloUsuario = presencaOk || justificativaOk
+                const expirou = c.modalidade !== 'Gravada' && diffFim > 24
+
+                if (c.isObrigatorio) {
+                  if (concluidoPeloUsuario || expirou) {
+                    historico.push(c)
+                  } else if (diffIni < 0) {
+                    proximosTreinamentos.push(c)
+                  } else {
+                    acoesNecessarias.push(c)
+                  }
+                } else {
+                  if (concluidoPeloUsuario || expirou) {
+                    historico.push(c)
+                  } else {
+                    opcionais.push(c)
+                  }
+                }
+              })
+
+              const renderCard = (cap: EventoAgendaItem, tipo: 'urgente' | 'proximo' | 'opcional' | 'historico') => {
+                let dFmt = 'Data não definida'
+                let dISO = ''
+                if (cap.data) {
+                  const d = new Date(cap.data)
+                  if (!isNaN(d.getTime())) {
+                    dFmt = d.toLocaleDateString('pt-BR')
+                    dISO = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
+                  }
+                }
+
+                const horaIniLimpa = (cap.hora_inicio || '00:00').replace(':', '')
+                const horaFimLimpa = (cap.hora_fim || '23:59').replace(':', '')
+                const linkGoogleCalendar = dISO
+                  ? `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(
+                      cap.nome_capacitacao
+                    )}&dates=${dISO}T${horaIniLimpa}00/${dISO}T${horaFimLimpa}00&details=${encodeURIComponent(
+                      'Ministrantes: ' + (cap.ministrantes || '')
+                    )}&location=${encodeURIComponent(cap.local_link || '')}`
+                  : null
+
+                // Estilo da borda
+                let borda = 'border-l-4 border-primary'
+                if (tipo === 'urgente') borda = 'border-l-4 border-orange-500 shadow-sm'
+                else if (tipo === 'opcional') borda = 'border-l-4 border-purple-400'
+                else if (tipo === 'historico') borda = 'border-l-4 border-gray-300'
+
+                // Badge de modalidade
+                let iconMod = 'location_on'
+                let bgMod = 'bg-gray-100 text-gray-700'
+                if (cap.modalidade === 'Online') {
+                  iconMod = 'videocam'
+                  bgMod = 'bg-blue-50 text-blue-700 border border-blue-200'
+                } else if (cap.modalidade === 'Gravada') {
+                  iconMod = 'ondemand_video'
+                  bgMod = 'bg-purple-50 text-purple-700 border border-purple-200'
+                } else if (cap.modalidade === 'Híbrido') {
+                  iconMod = 'devices'
+                  bgMod = 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                }
+
+                // Badge de Presença Pessoal (Double-Check)
+                let badgePresenca = null
+                const stP = cap.Minha_Presenca
+                if (stP === 'Presente' || (cap.Minha_Nota && cap.Minha_Nota > 0)) {
+                  badgePresenca = (
+                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 border border-emerald-200">
+                      <span className="material-symbols-outlined text-[13px]">check_circle</span> Presente
+                    </span>
+                  )
+                } else if (stP === 'Falta Justificada') {
+                  badgePresenca = (
+                    <span className="bg-slate-100 text-slate-700 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-slate-200 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[13px]">speaker_notes</span> Justificado
+                    </span>
+                  )
+                } else if (stP === 'Aguardando Ministrante') {
+                  badgePresenca = (
+                    <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-amber-200 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[13px]">pending_actions</span> Aguardando Chamada
+                    </span>
+                  )
+                } else if (stP === 'Avaliação Pendente') {
+                  badgePresenca = (
+                    <span className="bg-orange-100 text-orange-800 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-orange-200 animate-pulse flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[13px]">warning</span> Avaliação Pendente
+                    </span>
+                  )
+                } else if (cap.Status_Calculado === 'Concluída') {
+                  badgePresenca = (
+                    <span className="bg-red-100 text-red-700 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-red-200 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[13px]">cancel</span> Falta
+                    </span>
+                  )
+                }
+
+                return (
+                  <div
+                    key={cap.id}
+                    onClick={() => handleAbrirDetalhes(cap)}
+                    className={`bg-white rounded-2xl p-4 sm:p-5 shadow-xs border border-gray-100 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer ${borda}`}
+                  >
+                    <div className="flex justify-between items-start mb-2 gap-2 flex-wrap">
+                      <div className="flex flex-wrap gap-1.5 items-center">
+                        <span className="bg-blue-50 text-primary text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                          {cap.tipo_evento || 'Capacitação'}
+                        </span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 uppercase tracking-wider ${bgMod}`}>
+                          <span className="material-symbols-outlined text-[13px]">{iconMod}</span>
+                          {cap.modalidade}
+                        </span>
+                        {badgePresenca}
+                        {cap.souMinistrante && (
+                          <span className="bg-purple-100 text-purple-800 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider border border-purple-200 flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[12px]">school</span> Você é Facilitador
                           </span>
-                          <span
-                            className={`text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full ${
-                              item.modalidade === 'Presencial'
-                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                                : 'bg-purple-50 text-purple-700 border border-purple-100'
-                            }`}
-                          >
-                            {item.modalidade}
+                        )}
+                        {cap.isObrigatorio && (
+                          <span className="bg-red-50 text-red-700 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider border border-red-200">
+                            Obrigatório
                           </span>
-                          {item.obrigatorio && (
-                            <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-red-100 text-red-700">
-                              Obrigatório
-                            </span>
-                          )}
+                        )}
+                      </div>
+                      <span className="text-[10px] text-gray-400 font-mono">{cap.id}</span>
+                    </div>
+
+                    <h3 className="text-gray-900 font-headline font-bold text-base sm:text-lg mb-2">
+                      {cap.nome_capacitacao}
+                    </h3>
+
+                    <div className="flex flex-wrap gap-4 text-xs text-gray-600 mb-3">
+                      <div className="flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-[16px] text-gray-400">event</span>
+                        <span>{dFmt} • {cap.hora_inicio || '--:--'} às {cap.hora_fim || '--:--'}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-[16px] text-gray-400">person</span>
+                        <span className="font-semibold text-gray-800 truncate max-w-[220px]">
+                          {cap.ministrantes || 'A definir'}
+                        </span>
+                      </div>
+                      {cap.local_link && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="material-symbols-outlined text-[16px] text-gray-400">pin_drop</span>
+                          <span className="truncate max-w-[200px]">{cap.local_link}</span>
                         </div>
-                        <h3 className="font-headline font-bold text-base text-gray-900">{item.titulo}</h3>
-                        <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500 font-medium pt-1">
-                          <span className="flex items-center gap-1">
-                            <span className="material-symbols-outlined text-sm text-gray-400">calendar_today</span>
-                            {item.data} • {item.horario}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <span className="material-symbols-outlined text-sm text-gray-400">pin_drop</span>
-                            {item.local}
-                          </span>
-                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-gray-100 gap-2 flex-wrap">
+                      <div className="text-[11px] text-gray-500 font-medium">
+                        {cap.equipe_responsavel && <span>Equipe: <strong className="text-gray-700">{cap.equipe_responsavel}</strong></span>}
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+                      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                        {linkGoogleCalendar && (
+                          <a
+                            href={linkGoogleCalendar}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-xl hover:bg-blue-100 transition-colors"
+                          >
+                            <span className="material-symbols-outlined text-[14px]">calendar_add_on</span>
+                            Agenda
+                          </a>
+                        )}
                         <button
                           type="button"
-                          className="flex-1 sm:flex-initial px-4 py-2 bg-blue-50 text-primary hover:bg-blue-100 font-bold rounded-xl text-xs transition-all cursor-pointer flex items-center justify-center gap-1"
+                          onClick={() => handleAbrirDetalhes(cap)}
+                          className="px-3 py-1 bg-primary text-white font-bold rounded-xl text-xs hover:bg-blue-700 shadow-xs cursor-pointer flex items-center gap-1"
                         >
                           <span className="material-symbols-outlined text-sm">visibility</span>
                           <span>Detalhes</span>
                         </button>
                       </div>
                     </div>
-                  ))}
-              </div>
-            )}
+                  </div>
+                )
+              }
+
+              if (eventosFiltrados.length === 0) {
+                return (
+                  <div className="text-center py-12 bg-white rounded-3xl border border-gray-100 p-8 shadow-xs">
+                    <span className="material-symbols-outlined text-4xl text-gray-300 mb-2">event_busy</span>
+                    <p className="font-bold text-gray-700 text-sm">Nenhum compromisso encontrado.</p>
+                    <p className="text-xs text-gray-400 mt-1">Tente ajustar os filtros de pesquisa ou agende um novo evento no botão (+).</p>
+                  </div>
+                )
+              }
+
+              return (
+                <div className="space-y-6">
+                  {/* GRUPO 1: AÇÃO NECESSÁRIA */}
+                  {acoesNecessarias.length > 0 && (
+                    <div>
+                      <h3 className="font-headline font-bold text-sm uppercase tracking-wider text-orange-600 mb-3 flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-lg animate-pulse">notifications_active</span>
+                        Ação Necessária ({acoesNecessarias.length})
+                      </h3>
+                      <div className="space-y-3">
+                        {acoesNecessarias.map((cap) => renderCard(cap, 'urgente'))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* GRUPO 2: PRÓXIMOS TREINAMENTOS */}
+                  {proximosTreinamentos.length > 0 && (
+                    <div>
+                      <h3 className="font-headline font-bold text-sm uppercase tracking-wider text-primary mb-3 flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-lg">calendar_today</span>
+                        Próximos Treinamentos ({proximosTreinamentos.length})
+                      </h3>
+                      <div className="space-y-3">
+                        {proximosTreinamentos.map((cap) => renderCard(cap, 'proximo'))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* GRUPO 3: OPCIONAIS (OUTRAS EQUIPES) */}
+                  {opcionais.length > 0 && (
+                    <details className="group bg-purple-50/50 rounded-2xl p-4 border border-purple-100 transition-all">
+                      <summary className="flex items-center justify-between font-headline font-bold text-sm text-purple-900 cursor-pointer list-none outline-none">
+                        <span className="flex items-center gap-2">
+                          <span className="material-symbols-outlined text-[18px]">explore</span>
+                          Treinamentos Opcionais & Outras Equipes ({opcionais.length})
+                        </span>
+                        <span className="material-symbols-outlined transition group-open:rotate-180 text-purple-700">expand_more</span>
+                      </summary>
+                      <div className="mt-4 space-y-3">
+                        {opcionais.map((cap) => renderCard(cap, 'opcional'))}
+                      </div>
+                    </details>
+                  )}
+
+                  {/* GRUPO 4: HISTÓRICO CONCLUÍDO */}
+                  {historico.length > 0 && (
+                    <details className="group bg-gray-50/80 rounded-2xl p-4 border border-gray-200 transition-all">
+                      <summary className="flex items-center justify-between font-headline font-bold text-sm text-gray-600 cursor-pointer list-none outline-none">
+                        <span className="flex items-center gap-2">
+                          <span className="material-symbols-outlined text-[18px]">history</span>
+                          Histórico de Treinamentos Concluídos ({historico.length})
+                        </span>
+                        <span className="material-symbols-outlined transition group-open:rotate-180 text-gray-500">expand_more</span>
+                      </summary>
+                      <div className="mt-4 space-y-3 opacity-80">
+                        {historico.map((cap) => renderCard(cap, 'historico'))}
+                      </div>
+                    </details>
+                  )}
+                </div>
+              )
+            })()}
 
             {/* MODO GRID CALENDÁRIO */}
             {modoVisaoAgenda === 'grid' && (
               <div className="bg-white border border-gray-100 rounded-3xl p-5 shadow-xs mb-6">
                 <div className="flex justify-between items-center mb-4">
-                  <button className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-50 text-gray-600 hover:bg-gray-200 transition-colors cursor-pointer">
-                    <span className="material-symbols-outlined text-sm">chevron_left</span>
-                  </button>
-                  <h3 className="font-bold text-gray-800 text-base uppercase tracking-wider">Outubro 2026</h3>
-                  <button className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-50 text-gray-600 hover:bg-gray-200 transition-colors cursor-pointer">
-                    <span className="material-symbols-outlined text-sm">chevron_right</span>
-                  </button>
+                  <h3 className="font-bold text-gray-800 text-base uppercase tracking-wider flex items-center gap-2">
+                    <span className="material-symbols-outlined text-primary">calendar_month</span>
+                    Calendário Geral de Compromissos
+                  </h3>
+                  <span className="text-xs font-semibold text-gray-400">Total: {eventosAgenda.length} eventos</span>
                 </div>
 
                 <div className="grid grid-cols-7 gap-1 text-center mb-2">
                   {['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SAB'].map((d) => (
-                    <div key={d} className="text-[10px] font-bold text-gray-400 py-1">
+                    <div key={d} className="text-[10px] font-black text-gray-400 py-1">
                       {d}
                     </div>
                   ))}
@@ -769,19 +1339,35 @@ export default function PortalIEEEApp({
 
                 <div className="grid grid-cols-7 gap-1">
                   {Array.from({ length: 31 }, (_, i) => i + 1).map((dia) => {
-                    const temEvento = dia === 26 || dia === 28 || dia === 31
+                    const diaStr = String(dia).padStart(2, '0')
+                    const eventosNoDia = eventosAgenda.filter((e) => {
+                      const dt = (e.data || '').substring(0, 10)
+                      return dt.endsWith(`-${diaStr}`)
+                    })
+                    const temEvento = eventosNoDia.length > 0
+
                     return (
                       <div
                         key={dia}
-                        className={`p-2 h-14 rounded-xl text-xs font-bold border transition-all flex flex-col justify-between cursor-pointer ${
+                        onClick={() => {
+                          if (temEvento) {
+                            handleAbrirDetalhes(eventosNoDia[0])
+                          }
+                        }}
+                        className={`p-2 h-16 rounded-xl text-xs font-bold border transition-all flex flex-col justify-between ${
                           temEvento
-                            ? 'bg-blue-50/70 border-blue-200 text-primary shadow-xs'
+                            ? 'bg-blue-50/80 border-blue-300 text-primary shadow-xs cursor-pointer hover:bg-blue-100'
                             : 'bg-white border-gray-100 text-gray-700 hover:bg-gray-50'
                         }`}
                       >
-                        <span className="text-[11px]">{dia}</span>
+                        <span className="text-[11px] font-black">{dia}</span>
                         {temEvento && (
-                          <span className="w-2 h-2 rounded-full bg-primary self-center"></span>
+                          <div className="flex flex-col items-center">
+                            <span className="w-2 h-2 rounded-full bg-primary mb-1"></span>
+                            <span className="text-[9px] font-extrabold text-blue-700 truncate w-full text-center">
+                              {eventosNoDia.length} evt
+                            </span>
+                          </div>
                         )}
                       </div>
                     )
@@ -793,7 +1379,26 @@ export default function PortalIEEEApp({
             {/* FAB (+) ADICIONAR NOVO COMPROMISSO */}
             <button
               id="fab-adicionar"
-              onClick={() => setModalNovaCapAberto(true)}
+              onClick={() => {
+                setFormNovoEvento({
+                  id: '',
+                  id_curso: '',
+                  nome_capacitacao: '',
+                  data: new Date().toISOString().substring(0, 10),
+                  hora_inicio: '14:00',
+                  hora_fim: '16:00',
+                  ministrantes: usuario.nome || '',
+                  modalidade: 'Presencial',
+                  local_link: 'E-213 - Sala do Ramo',
+                  equipe_responsavel: 'Geral',
+                  tipo_evento: 'Capacitação',
+                  publico_alvo: 'Todos do Ramo',
+                  contexto: 'Processo Trainee (PSE)',
+                  descricao: '',
+                })
+                setBuscaCatalogoCurso('')
+                setModalNovaCapAberto(true)
+              }}
               className="fixed bottom-24 right-6 w-14 h-14 bg-primary text-white rounded-2xl shadow-xl flex items-center justify-center active:scale-90 z-[50] transition-all hover:bg-blue-700 cursor-pointer"
               title="Agendar novo compromisso"
             >
@@ -1260,19 +1865,26 @@ export default function PortalIEEEApp({
                     <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white">
                       <h4 className="font-bold text-sm">Demandas da Equipe (Capacitações Obrigatórias)</h4>
                       <p className="text-xs text-blue-200 mt-1">
-                        Marque treinamentos obrigatórios para os trainees da sua equipe.
+                        Defina quais treinamentos do catálogo são obrigatórios para os novos trainees e membros da sua equipe.
                       </p>
                     </div>
 
                     <div className="space-y-2">
-                      {capacitacoesMock.map((cap) => (
-                        <div key={cap.id} className="p-3 bg-gray-50 border rounded-xl flex items-center justify-between">
-                          <div>
-                            <p className="font-bold text-xs text-gray-800">{cap.titulo}</p>
-                            <p className="text-[10px] text-gray-500">{cap.categoria} • {cap.data}</p>
+                      {catalogoCursos.map((curso) => (
+                        <div key={curso.id} className="p-3 bg-gray-50 border border-gray-200 rounded-xl flex items-center justify-between hover:bg-blue-50/50 transition-colors">
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] font-mono text-gray-500 font-bold">{curso.id}</span>
+                              <p className="font-bold text-xs text-gray-800">{curso.nome_curso}</p>
+                            </div>
+                            <p className="text-[10px] text-gray-500">Equipe: <strong className="text-gray-700">{curso.equipe_responsavel}</strong></p>
                           </div>
                           <label className="flex items-center gap-1.5 text-xs font-bold text-gray-700 cursor-pointer">
-                            <input type="checkbox" defaultChecked={cap.obrigatorio} className="rounded text-primary focus:ring-primary w-4 h-4" />
+                            <input
+                              type="checkbox"
+                              defaultChecked={curso.equipe_responsavel.includes('Geral') || curso.id === 'CAP-015'}
+                              className="rounded text-primary focus:ring-primary w-4 h-4 cursor-pointer"
+                            />
                             <span>Obrigatória</span>
                           </label>
                         </div>
@@ -1283,19 +1895,72 @@ export default function PortalIEEEApp({
 
                 {/* SUBVIEW: GESTÃO DE CATÁLOGO */}
                 {adminSubView === 'gestao' && (
-                  <div className="space-y-3">
-                    <p className="text-xs text-gray-500">Cursos e capacitações registrados no catálogo oficial.</p>
-                    {capacitacoesMock.map((cap) => (
-                      <div key={cap.id} className="p-3 bg-gray-50 border rounded-xl flex items-center justify-between">
-                        <div>
-                          <p className="font-bold text-xs text-gray-800">{cap.titulo}</p>
-                          <p className="text-[10px] text-gray-500">Ministrante: {cap.ministrante}</p>
-                        </div>
-                        <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg">
-                          Ativo
-                        </span>
+                  <div className="space-y-4">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                      <div>
+                        <h4 className="font-bold text-sm text-gray-800">Catálogo Oficial de Treinamentos</h4>
+                        <p className="text-xs text-gray-500">
+                          {catalogoCursos.length} cursos cadastrados no banco de dados.
+                        </p>
                       </div>
-                    ))}
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleExportarRelatorioPresencas}
+                          className="px-3 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                          title="Exportar dados de presença e eventos para CSV"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">download</span>
+                          <span>Exportar CSV</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setModalNovoCursoAberto(true)}
+                          className="px-3 py-2 bg-primary text-white hover:bg-blue-700 font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">add</span>
+                          <span>Novo Curso</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="relative">
+                      <span className="material-symbols-outlined absolute left-3 top-2.5 text-gray-400 text-sm">search</span>
+                      <input
+                        type="text"
+                        value={filtroPesquisaCatalogo}
+                        onChange={(e) => setFiltroPesquisaCatalogo(e.target.value)}
+                        placeholder="Pesquisar curso no catálogo por nome ou equipe..."
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-xs font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+
+                    <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+                      {catalogoCursos
+                        .filter((c) => {
+                          if (!filtroPesquisaCatalogo.trim()) return true
+                          const t = filtroPesquisaCatalogo.toLowerCase()
+                          return c.nome_curso.toLowerCase().includes(t) || c.equipe_responsavel.toLowerCase().includes(t) || c.id.toLowerCase().includes(t)
+                        })
+                        .map((c) => (
+                          <div key={c.id} className="p-3 bg-white border border-gray-100 rounded-xl flex items-center justify-between shadow-2xs hover:border-blue-200 transition-colors">
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-mono text-primary font-black bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
+                                  {c.id}
+                                </span>
+                                <p className="font-bold text-xs text-gray-800">{c.nome_curso}</p>
+                              </div>
+                              <p className="text-[10px] text-gray-500">
+                                Responsável: <strong className="text-gray-700">{c.equipe_responsavel}</strong>
+                              </p>
+                            </div>
+                            <span className="text-[10px] font-black uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+                              {c.status_curso || 'Ativo'}
+                            </span>
+                          </div>
+                        ))}
+                    </div>
                   </div>
                 )}
 
@@ -2924,51 +3589,606 @@ export default function PortalIEEEApp({
       )}
 
       {/* ========================================================================= */}
-      {/* 9. MODAL NOVA CAPACITAÇÃO / EVENTO */}
+      {/* 9. MODAL DETALHES DO TREINAMENTO / EVENTO (MÓDULO 3) */}
       {/* ========================================================================= */}
-      {modalNovaCapAberto && (
-        <div className="fixed inset-0 bg-black/50 z-[100] flex flex-col justify-end text-left">
-          <div className="bg-white w-full rounded-t-3xl p-6 max-h-[90vh] overflow-y-auto max-w-2xl mx-auto">
-            <div className="flex items-center justify-between mb-4 border-b pb-3">
-              <h2 className="font-headline font-bold text-xl text-gray-900">Agendar Compromisso / Evento</h2>
+      {modalDetalhesAberto && eventoDetalhes && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[200] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 text-left">
+          <div className="bg-white w-full sm:max-w-xl rounded-t-3xl sm:rounded-3xl p-6 max-h-[92vh] overflow-y-auto shadow-2xl space-y-4">
+            {/* Header */}
+            <div className="flex items-start justify-between border-b border-gray-100 pb-3 gap-3">
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="bg-blue-50 text-primary text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                    {eventoDetalhes.tipo_evento || 'Capacitação'}
+                  </span>
+                  <span className="bg-gray-100 text-gray-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                    {eventoDetalhes.modalidade}
+                  </span>
+                  <span className="text-[10px] text-gray-400 font-mono">ID: {eventoDetalhes.id}</span>
+                </div>
+                <h2 className="font-headline font-bold text-xl text-gray-900 leading-tight">
+                  {eventoDetalhes.nome_capacitacao}
+                </h2>
+              </div>
               <button
                 type="button"
-                onClick={() => setModalNovaCapAberto(false)}
-                className="text-gray-400 hover:text-gray-600 text-xl font-bold p-1 cursor-pointer"
+                onClick={() => setModalDetalhesAberto(false)}
+                className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 font-bold flex items-center justify-center shrink-0 cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <div className="space-y-4 text-xs">
+            {/* Informações Básicas */}
+            <div className="bg-gray-50/80 rounded-2xl p-4 border border-gray-100 space-y-2.5 text-xs text-gray-700">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[18px] text-gray-400">calendar_today</span>
+                <span className="font-semibold text-gray-900">
+                  {eventoDetalhes.data} • {eventoDetalhes.hora_inicio || '--:--'} às {eventoDetalhes.hora_fim || '--:--'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[18px] text-gray-400">person</span>
+                <span>
+                  Facilitador(es): <strong className="text-gray-900">{eventoDetalhes.ministrantes || 'A definir'}</strong>
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[18px] text-gray-400">groups</span>
+                <span>
+                  Público-Alvo: <strong className="text-gray-900">{eventoDetalhes.publico_alvo}</strong>
+                </span>
+              </div>
+              {eventoDetalhes.local_link && (
+                <div className="flex items-start gap-2 pt-1">
+                  <span className="material-symbols-outlined text-[18px] text-gray-400 shrink-0">pin_drop</span>
+                  <div className="flex-1">
+                    {eventoDetalhes.local_link.startsWith('http') ? (
+                      <a
+                        href={eventoDetalhes.local_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 font-bold hover:underline break-all inline-flex items-center gap-1"
+                      >
+                        <span>Acessar Sala Virtual</span>
+                        <span className="material-symbols-outlined text-xs">open_in_new</span>
+                      </a>
+                    ) : (
+                      <span>{eventoDetalhes.local_link}</span>
+                    )}
+                  </div>
+                </div>
+              )}
+              {eventoDetalhes.descricao && (
+                <div className="pt-2 border-t border-gray-200 text-gray-600 text-[11px] leading-relaxed">
+                  <p className="font-bold text-gray-700 uppercase text-[9px] mb-0.5">Pauta / Ementa</p>
+                  <p>{eventoDetalhes.descricao}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Ações Especiais de Facilitador / Liderança */}
+            {eventoDetalhes.souMinistrante && eventoDetalhes.modalidade !== 'Gravada' && (
+              <div className="bg-purple-50 p-4 rounded-2xl border border-purple-200 text-center space-y-2">
+                <p className="text-xs font-bold text-purple-900">Você é o facilitador desta sessão</p>
+                <button
+                  type="button"
+                  onClick={handleAbrirChamada}
+                  className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-extrabold rounded-xl shadow-md text-xs transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                >
+                  <span className="material-symbols-outlined text-lg">checklist</span>
+                  <span>Fazer Chamada da Turma</span>
+                </button>
+              </div>
+            )}
+
+            {eventoDetalhes.podeGerenciar && eventoDetalhes.status !== 'Cancelada' && (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleCancelarEvento}
+                  className="flex-1 py-2 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-sm">cancel</span>
+                  <span>Cancelar Compromisso</span>
+                </button>
+              </div>
+            )}
+
+            {/* MOTOR DE DOUBLE-CHECK: PRESENÇA E AVALIAÇÃO DE DIDÁTICA */}
+            <div className="pt-2">
+              {eventoDetalhes.Minha_Nota ? (
+                <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-200 text-center space-y-2">
+                  <div className="inline-flex items-center gap-1 text-[11px] font-black uppercase text-emerald-800 bg-emerald-100 px-3 py-1 rounded-full">
+                    <span className="material-symbols-outlined text-[15px]">verified</span>
+                    Presença Confirmada (Double-Check)
+                  </div>
+                  <p className="text-xs text-gray-500 font-bold uppercase">Sua Avaliação de Didática</p>
+                  <div className="flex justify-center gap-1">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <span
+                        key={i}
+                        className={`material-symbols-outlined text-2xl ${
+                          i <= (eventoDetalhes.Minha_Nota || 0) ? 'text-amber-400' : 'text-gray-300'
+                        }`}
+                      >
+                        star
+                      </span>
+                    ))}
+                  </div>
+                  {eventoDetalhes.Meu_Feedback && (
+                    <p className="text-xs italic text-gray-700 mt-1 bg-white/70 p-2.5 rounded-xl border border-emerald-100">
+                      &ldquo;{eventoDetalhes.Meu_Feedback}&rdquo;
+                    </p>
+                  )}
+                </div>
+              ) : eventoDetalhes.Minha_Presenca === 'Falta Justificada' ? (
+                <div className="bg-slate-100 p-4 rounded-2xl border border-slate-200 text-center text-xs font-bold text-slate-700 flex flex-col items-center gap-1">
+                  <span className="material-symbols-outlined text-3xl text-slate-500">speaker_notes</span>
+                  <span>Falta Justificada Registrada para este evento.</span>
+                </div>
+              ) : (() => {
+                const agora = new Date()
+                const dtStr = (eventoDetalhes.data || '').substring(0, 10)
+                const ini = new Date(`${dtStr}T${eventoDetalhes.hora_inicio || '00:00'}:00`)
+                const fim = new Date(`${dtStr}T${eventoDetalhes.hora_fim || '23:59'}:00`)
+                const diffIni = (agora.getTime() - ini.getTime()) / (1000 * 60 * 60)
+                const diffFim = (agora.getTime() - fim.getTime()) / (1000 * 60 * 60)
+
+                // 1. Futuro
+                if (diffIni < 0 && eventoDetalhes.modalidade !== 'Gravada') {
+                  return (
+                    <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 text-center text-blue-700 space-y-1">
+                      <span className="material-symbols-outlined text-2xl">schedule</span>
+                      <p className="font-bold text-xs">Aguarde o início do treinamento para registrar sua presença.</p>
+                      <p className="text-[11px] text-blue-600">A chamada e avaliação serão liberadas no horário do evento.</p>
+                    </div>
+                  )
+                }
+
+                // 2. Expirado > 24h
+                if (diffFim > 24 && eventoDetalhes.modalidade !== 'Gravada') {
+                  return (
+                    <div className="bg-red-50 p-4 rounded-2xl border border-red-100 text-center text-red-700 space-y-1">
+                      <span className="material-symbols-outlined text-2xl">timer_off</span>
+                      <p className="font-bold text-xs">O período de 24h para registro ou justificativa expirou.</p>
+                      <p className="text-[11px] text-red-600">Falta computada automaticamente.</p>
+                    </div>
+                  )
+                }
+
+                // 3. Janela de Justificativa (1h a 24h pós-evento sem chamada)
+                if (diffFim > 1 && diffFim <= 24 && eventoDetalhes.modalidade !== 'Gravada' && eventoDetalhes.Minha_Presenca !== 'Avaliação Pendente') {
+                  return (
+                    <div className="bg-red-50/70 p-4 rounded-2xl border border-red-200 text-center space-y-3">
+                      <div className="flex items-center justify-center gap-1.5 text-red-700 font-bold text-xs">
+                        <span className="material-symbols-outlined text-base">warning</span>
+                        <span>Período de Justificativa de Ausência (24h)</span>
+                      </div>
+                      <textarea
+                        value={justificativaTexto}
+                        onChange={(e) => setJustificativaTexto(e.target.value)}
+                        placeholder="Descreva o motivo de força maior que impediu sua presença..."
+                        className="w-full bg-white border border-red-200 rounded-xl p-3 text-xs outline-none focus:ring-2 focus:ring-red-400"
+                        rows={3}
+                      />
+                      {feedbackAcaoAgenda && (
+                        <p className={`text-xs font-bold ${feedbackAcaoAgenda.tipo === 'ok' ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {feedbackAcaoAgenda.msg}
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleRegistrarJustificativa}
+                        disabled={isSalvandoPresenca}
+                        className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition-colors shadow-sm disabled:opacity-50 cursor-pointer"
+                      >
+                        {isSalvandoPresenca ? 'Enviando...' : 'Enviar Justificativa de Falta'}
+                      </button>
+                    </div>
+                  )
+                }
+
+                // 4. Janela de Presença Normal & Avaliação (Durante o evento, até 1h após ou aula gravada)
+                return (
+                  <div className="bg-white p-4 rounded-2xl border border-blue-100 text-center space-y-3 shadow-xs">
+                    <div className="space-y-1">
+                      <label className="text-xs font-extrabold text-gray-800 uppercase block tracking-wider">
+                        Avalie a Didática para Confirmar a Presença
+                      </label>
+                      <p className="text-[11px] text-gray-500">
+                        Seu feedback construtivo é anônimo e ajuda na melhoria dos cursos do Ramo.
+                      </p>
+                    </div>
+
+                    <div className="flex justify-center gap-2 py-1">
+                      {[1, 2, 3, 4, 5].map((estrela) => (
+                        <button
+                          key={estrela}
+                          type="button"
+                          onClick={() => setNotaAvaliacao(estrela)}
+                          className="hover:scale-125 transition-transform p-1 cursor-pointer"
+                        >
+                          <span
+                            className={`material-symbols-outlined text-3xl ${
+                              estrela <= notaAvaliacao ? 'text-amber-400' : 'text-gray-300'
+                            }`}
+                          >
+                            star
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+
+                    <textarea
+                      value={feedbackAvaliacao}
+                      onChange={(e) => setFeedbackAvaliacao(e.target.value)}
+                      placeholder="O que achou do ritmo, clareza e didática do facilitador? (Obrigatório)"
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs outline-none focus:ring-2 focus:ring-primary"
+                      rows={2}
+                    />
+
+                    {feedbackAcaoAgenda && (
+                      <p className={`text-xs font-bold ${feedbackAcaoAgenda.tipo === 'ok' ? 'text-emerald-600' : 'text-red-600'}`}>
+                        {feedbackAcaoAgenda.msg}
+                      </p>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={handleRegistrarPresenca}
+                      disabled={isSalvandoPresenca || notaAvaliacao === 0 || !feedbackAvaliacao.trim()}
+                      className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl shadow-md text-xs transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2 active:scale-95"
+                    >
+                      <span className="material-symbols-outlined text-lg">check_circle</span>
+                      <span>{isSalvandoPresenca ? 'Registrando...' : 'Confirmar Presença e Avaliar'}</span>
+                    </button>
+                  </div>
+                )
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 10. MODAL CHAMADA DO MINISTRANTE (MÓDULO 3) */}
+      {/* ========================================================================= */}
+      {modalChamadaAberto && eventoDetalhes && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[250] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 text-left">
+          <div className="bg-white w-full sm:max-w-xl rounded-t-3xl sm:rounded-3xl p-6 max-h-[92vh] overflow-y-auto shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <div>
-                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Título do Evento</label>
+                <h3 className="font-headline font-bold text-lg text-gray-900">Lista de Chamada Oficial</h3>
+                <p className="text-xs text-gray-500 truncate max-w-sm">{eventoDetalhes.nome_capacitacao}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalChamadaAberto(false)}
+                className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 font-bold flex items-center justify-center shrink-0 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Barra de Busca e Contadores */}
+            <div className="flex flex-col sm:flex-row gap-2 justify-between items-stretch sm:items-center">
+              <div className="relative flex-1">
+                <span className="material-symbols-outlined absolute left-3 top-2.5 text-gray-400 text-sm">search</span>
                 <input
                   type="text"
-                  placeholder="Ex: Treinamento de SolidWorks"
-                  className="w-full bg-white border border-gray-200 rounded-xl p-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-primary"
+                  value={buscaChamada}
+                  onChange={(e) => setBuscaChamada(e.target.value)}
+                  placeholder="Filtrar por nome ou matrícula..."
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-xs font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+              <div className="flex items-center gap-2 justify-end">
+                <span className="text-xs font-black text-purple-900 bg-purple-50 px-3 py-1.5 rounded-xl border border-purple-200">
+                  {listaChamada.filter((m) => m.presente).length} / {listaChamada.length} Presentes
+                </span>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => handleMarcarTodosChamada(true)}
+                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-[11px] font-bold rounded-lg cursor-pointer"
+              >
+                Marcar Todos
+              </button>
+              <button
+                type="button"
+                onClick={() => handleMarcarTodosChamada(false)}
+                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-[11px] font-bold rounded-lg cursor-pointer"
+              >
+                Desmarcar Todos
+              </button>
+            </div>
+
+            {/* Lista de Alunos */}
+            <div className="space-y-2 max-h-[350px] overflow-y-auto pr-1">
+              {isCarregandoChamada ? (
+                <p className="text-xs text-gray-400 text-center py-8 animate-pulse">Carregando lista de chamada...</p>
+              ) : (
+                listaChamada
+                  .filter((m) => {
+                    if (!buscaChamada.trim()) return true
+                    const t = buscaChamada.toLowerCase()
+                    return m.nome.toLowerCase().includes(t) || m.matricula.toLowerCase().includes(t)
+                  })
+                  .map((membro) => (
+                    <div
+                      key={membro.matricula}
+                      onClick={() => handleTogglePresencaChamada(membro.matricula)}
+                      className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-colors ${
+                        membro.presente
+                          ? 'bg-purple-50/70 border-purple-300'
+                          : 'bg-white border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="space-y-0.5">
+                        <p className="font-bold text-xs text-gray-900">{membro.nome}</p>
+                        <div className="flex items-center gap-2 text-[10px] text-gray-500 font-mono">
+                          <span>{membro.matricula}</span>
+                          <span className={`px-1.5 py-0.2 rounded font-bold ${
+                            membro.tipo === 'Obrigatório' ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-600'
+                          }`}>
+                            {membro.tipo}
+                          </span>
+                        </div>
+                      </div>
+
+                      <input
+                        type="checkbox"
+                        checked={membro.presente}
+                        onChange={() => handleTogglePresencaChamada(membro.matricula)}
+                        className="w-5 h-5 rounded text-purple-600 focus:ring-purple-500 cursor-pointer"
+                      />
+                    </div>
+                  ))
+              )}
+            </div>
+
+            <div className="flex gap-2 pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setModalChamadaAberto(false)}
+                className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-xs cursor-pointer"
+              >
+                Fechar
+              </button>
+              <button
+                type="button"
+                onClick={handleSalvarChamada}
+                disabled={isSalvandoChamada}
+                className="flex-1 py-3 bg-purple-600 hover:bg-purple-700 text-white font-extrabold rounded-xl shadow-md text-xs transition-all disabled:opacity-50 cursor-pointer"
+              >
+                {isSalvandoChamada ? 'Salvando...' : 'Salvar Chamada Oficial'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 11. MODAL NOVA CAPACITAÇÃO / AGENDAMENTO */}
+      {/* ========================================================================= */}
+      {modalNovaCapAberto && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[200] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 text-left">
+          <div className="bg-white w-full sm:max-w-2xl rounded-t-3xl sm:rounded-3xl p-6 max-h-[92vh] overflow-y-auto shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div>
+                <h2 className="font-headline font-bold text-xl text-gray-900">Agendar Novo Treinamento / Evento</h2>
+                <p className="text-xs text-gray-500">Marque capacitações técnicas, reuniões gerais ou workshops do Ramo.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalNovaCapAberto(false)}
+                className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 font-bold flex items-center justify-center shrink-0 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3.5 text-xs">
+              {/* Autocomplete de Curso do Catálogo */}
+              <div className="relative">
+                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                  Vincular Curso do Catálogo (Opcional)
+                </label>
+                <input
+                  type="text"
+                  value={buscaCatalogoCurso}
+                  onChange={(e) => {
+                    setBuscaCatalogoCurso(e.target.value)
+                    setDropdownCatalogoAberto(true)
+                  }}
+                  onFocus={() => setDropdownCatalogoAberto(true)}
+                  placeholder="Selecione ou busque no catálogo (ex: SolidWorks, Python, Git...)"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
+                />
+
+                {dropdownCatalogoAberto && catalogoCursos.length > 0 && (
+                  <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto z-50 divide-y divide-gray-100">
+                    {catalogoCursos
+                      .filter((c) => !buscaCatalogoCurso.trim() || c.nome_curso.toLowerCase().includes(buscaCatalogoCurso.toLowerCase()))
+                      .map((curso) => (
+                        <div
+                          key={curso.id}
+                          onClick={() => {
+                            setFormNovoEvento((prev) => ({
+                              ...prev,
+                              id_curso: curso.id,
+                              nome_capacitacao: curso.nome_curso,
+                              equipe_responsavel: curso.equipe_responsavel || 'Geral',
+                            }))
+                            setBuscaCatalogoCurso(curso.nome_curso)
+                            setDropdownCatalogoAberto(false)
+                          }}
+                          className="p-2.5 hover:bg-blue-50 cursor-pointer flex items-center justify-between text-xs"
+                        >
+                          <span className="font-bold text-gray-800">{curso.nome_curso}</span>
+                          <span className="text-[10px] font-mono text-gray-400">{curso.id} • {curso.equipe_responsavel}</span>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Título do Evento */}
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Título do Evento *</label>
+                <input
+                  type="text"
+                  value={formNovoEvento.nome_capacitacao}
+                  onChange={(e) => setFormNovoEvento({ ...formNovoEvento, nome_capacitacao: e.target.value })}
+                  placeholder="Ex: Treinamento de SolidWorks para Iniciantes"
+                  className="w-full bg-white border border-gray-200 rounded-xl p-2.5 text-xs font-bold text-gray-900 outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              {/* Contexto e Tipo de Evento */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Data</label>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Contexto</label>
+                  <select
+                    value={formNovoEvento.contexto}
+                    onChange={(e) => setFormNovoEvento({ ...formNovoEvento, contexto: e.target.value })}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="Processo Trainee (PSE)">Processo Trainee (PSE)</option>
+                    <option value="Ramo Estudantil (Capítulos / Equipes)">Ramo Estudantil (Capítulos / Equipes)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Tipo de Evento</label>
+                  <select
+                    value={formNovoEvento.tipo_evento}
+                    onChange={(e) => setFormNovoEvento({ ...formNovoEvento, tipo_evento: e.target.value })}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="Capacitação">Capacitação / Treinamento</option>
+                    <option value="Reunião 360">Reunião 360</option>
+                    <option value="Reunião Geral">Reunião Geral</option>
+                    <option value="Follow Up Líder">Follow Up Líder</option>
+                    <option value="Workshop">Workshop / Hackathon</option>
+                    <option value="Avaliação / Prova">Avaliação / Prova</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Data, Horário e Modalidade */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Data *</label>
                   <input
                     type="date"
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-primary"
+                    value={formNovoEvento.data}
+                    onChange={(e) => setFormNovoEvento({ ...formNovoEvento, data: e.target.value })}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Horário</label>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Horário Início / Fim</label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="text"
+                      value={formNovoEvento.hora_inicio}
+                      onChange={(e) => setFormNovoEvento({ ...formNovoEvento, hora_inicio: e.target.value })}
+                      placeholder="14:00"
+                      className="w-1/2 bg-gray-50 border border-gray-200 rounded-xl p-2 text-xs font-medium text-center outline-none focus:ring-2 focus:ring-primary"
+                    />
+                    <span className="text-gray-400">-</span>
+                    <input
+                      type="text"
+                      value={formNovoEvento.hora_fim}
+                      onChange={(e) => setFormNovoEvento({ ...formNovoEvento, hora_fim: e.target.value })}
+                      placeholder="16:00"
+                      className="w-1/2 bg-gray-50 border border-gray-200 rounded-xl p-2 text-xs font-medium text-center outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Modalidade</label>
+                  <select
+                    value={formNovoEvento.modalidade}
+                    onChange={(e) => setFormNovoEvento({ ...formNovoEvento, modalidade: e.target.value as any })}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="Presencial">Presencial</option>
+                    <option value="Online">Online</option>
+                    <option value="Gravada">Gravada</option>
+                    <option value="Híbrido">Híbrido</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Local ou Link e Facilitadores */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Local ou Link da Reunião</label>
                   <input
                     type="text"
-                    placeholder="14:00 - 16:00"
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-primary"
+                    value={formNovoEvento.local_link}
+                    onChange={(e) => setFormNovoEvento({ ...formNovoEvento, local_link: e.target.value })}
+                    placeholder="E-213 - Sala do Ramo ou Link Meet/Teams"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Facilitador(es) / Ministrante(s)</label>
+                  <input
+                    type="text"
+                    value={formNovoEvento.ministrantes}
+                    onChange={(e) => setFormNovoEvento({ ...formNovoEvento, ministrantes: e.target.value })}
+                    placeholder="Nomes dos ministrantes separados por vírgula"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
               </div>
 
-              <div className="flex gap-2 pt-2">
+              {/* Equipe Responsável e Público Alvo */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Equipe Responsável</label>
+                  <input
+                    type="text"
+                    value={formNovoEvento.equipe_responsavel}
+                    onChange={(e) => setFormNovoEvento({ ...formNovoEvento, equipe_responsavel: e.target.value })}
+                    placeholder="Ex: Projetos, Robótica, CS, Geral"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Público-Alvo</label>
+                  <select
+                    value={formNovoEvento.publico_alvo}
+                    onChange={(e) => setFormNovoEvento({ ...formNovoEvento, publico_alvo: e.target.value })}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="Todos do Ramo">Todos do Ramo</option>
+                    <option value="Apenas Trainees">Apenas Trainees</option>
+                    <option value="Apenas Equipe">Apenas Equipe</option>
+                    <option value="Apenas Diretoria">Apenas Diretoria</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Descrição / Pauta */}
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Descrição / Pauta (Opcional)</label>
+                <textarea
+                  value={formNovoEvento.descricao}
+                  onChange={(e) => setFormNovoEvento({ ...formNovoEvento, descricao: e.target.value })}
+                  placeholder="Detalhes sobre o que será abordado, materiais prévios ou pré-requisitos..."
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
+                  rows={2}
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-gray-100">
                 <button
                   type="button"
                   onClick={() => setModalNovaCapAberto(false)}
@@ -2978,13 +4198,96 @@ export default function PortalIEEEApp({
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    alert('Compromisso agendado com sucesso!')
-                    setModalNovaCapAberto(false)
-                  }}
-                  className="flex-1 py-3 bg-primary text-white font-bold rounded-xl hover:bg-blue-700 shadow-md cursor-pointer"
+                  onClick={handleSalvarNovoEvento}
+                  disabled={isSalvandoEvento}
+                  className="flex-1 py-3 bg-primary text-white font-extrabold rounded-xl hover:bg-blue-700 shadow-md transition-all cursor-pointer disabled:opacity-50"
                 >
-                  Confirmar Agendamento
+                  {isSalvandoEvento ? 'Agendando...' : 'Confirmar Agendamento'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 12. MODAL NOVO CURSO NO CATÁLOGO (GP) */}
+      {/* ========================================================================= */}
+      {modalNovoCursoAberto && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[200] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 text-left">
+          <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <h3 className="font-headline font-bold text-lg text-gray-900">Novo Curso no Catálogo</h3>
+              <button
+                type="button"
+                onClick={() => setModalNovoCursoAberto(false)}
+                className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 font-bold flex items-center justify-center shrink-0 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Nome do Treinamento *</label>
+                <input
+                  type="text"
+                  value={formNovoCurso.nome_curso}
+                  onChange={(e) => setFormNovoCurso({ ...formNovoCurso, nome_curso: e.target.value })}
+                  placeholder="Ex: Introdução ao Docker e Containers"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Equipe Responsável</label>
+                  <input
+                    type="text"
+                    value={formNovoCurso.equipe_responsavel}
+                    onChange={(e) => setFormNovoCurso({ ...formNovoCurso, equipe_responsavel: e.target.value })}
+                    placeholder="Ex: Wolfbyte (CS)"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Carga Horária</label>
+                  <input
+                    type="text"
+                    value={formNovoCurso.carga_horaria}
+                    onChange={(e) => setFormNovoCurso({ ...formNovoCurso, carga_horaria: e.target.value })}
+                    placeholder="Ex: 2h"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Ementa / Descrição</label>
+                <textarea
+                  value={formNovoCurso.ementa}
+                  onChange={(e) => setFormNovoCurso({ ...formNovoCurso, ementa: e.target.value })}
+                  placeholder="Resumo dos tópicos abordados no curso..."
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
+                  rows={3}
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setModalNovoCursoAberto(false)}
+                  className="flex-1 py-2.5 bg-gray-100 font-bold rounded-xl text-gray-600 hover:bg-gray-200 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSalvarNovoCursoCatalogo}
+                  disabled={isSalvandoCurso}
+                  className="flex-1 py-2.5 bg-primary text-white font-extrabold rounded-xl hover:bg-blue-700 shadow-md transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isSalvandoCurso ? 'Salvando...' : 'Salvar no Catálogo'}
                 </button>
               </div>
             </div>

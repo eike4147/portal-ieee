@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import PortalIEEEApp from '@/components/portal-ieee-app'
+import { obterAgendaAction } from '@/app/agenda/actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -115,6 +116,9 @@ export default async function HomePage() {
     .eq('usuario_id', user.id)
     .maybeSingle()
 
+  // 7. Busca Agenda de Eventos e Catálogo de Cursos (Módulo 3)
+  const agendaRes = await obterAgendaAction()
+
   return (
     <PortalIEEEApp
       usuario={{
@@ -139,6 +143,8 @@ export default async function HomePage() {
       usuariosElegiveisSala={usuariosElegiveis}
       pchInicial={pchRecord || null}
       dadosMembroInicial={dadosMembroRecord || null}
+      agendaInicial={agendaRes.eventos || []}
+      catalogoInicial={agendaRes.catalogo || []}
     />
   )
 }
