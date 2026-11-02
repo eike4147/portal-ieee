@@ -13,6 +13,8 @@ import {
 import FormAtualizacaoCadastralInline, {
   FormAtualizacaoCadastralInlineRef,
 } from './form-atualizacao-cadastral-inline'
+import SecaoCargosSlots from './secao-cargos-slots'
+import FilaSolicitacoesGP from './fila-solicitacoes-gp'
 import { detectarCursoDaMatricula, sugerirPeriodoDaMatricula } from '@/lib/curso-matricula'
 
 interface UsuarioProps {
@@ -1224,6 +1226,9 @@ export default function PortalIEEEApp({
                       </div>
                     </div>
 
+                    {/* FILA DE SOLICITAÇÕES GP */}
+                    <FilaSolicitacoesGP />
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
                       {membrosEquipeMock.map((m) => (
                         <div
@@ -1754,30 +1759,9 @@ export default function PortalIEEEApp({
                   </div>
                 )}
 
-                {/* SUBVIEW: CARGOS */}
+                {/* SUBVIEW: CARGOS & MOVIMENTAÇÃO (SISTEMA DE SLOTS) */}
                 {perfilSubView === 'cargos' && (
-                  <div className="bg-white p-5 rounded-3xl shadow-xs border border-gray-100 space-y-4">
-                    <h4 className="font-bold text-xs uppercase text-gray-400">Seus Cargos Ativos</h4>
-                    <div className="space-y-2">
-                      {usuario.cargos.length > 0 ? (
-                        usuario.cargos.map((cargo, idx) => (
-                          <div key={idx} className="p-3.5 bg-indigo-50/70 border border-indigo-100 rounded-2xl flex items-center justify-between">
-                            <div className="flex items-center gap-2.5">
-                              <span className="material-symbols-outlined text-indigo-700">badge</span>
-                              <span className="font-bold text-xs text-indigo-950">{cargo}</span>
-                            </div>
-                            <span className="text-[10px] bg-emerald-100 text-emerald-800 font-extrabold px-2 py-0.5 rounded">
-                              Ativo
-                            </span>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="p-3 bg-gray-50 text-gray-500 text-xs rounded-xl text-center">
-                          Nenhum cargo específico atribuído.
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                  <SecaoCargosSlots cargosIniciaisUsuario={usuario.cargos || []} />
                 )}
 
                 {/* SUBVIEW: DADOS CADASTRAIS (DIVIDIDO EM 3 ETAPAS) */}
