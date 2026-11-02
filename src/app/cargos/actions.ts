@@ -2,12 +2,20 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-import { buscarCargoPorNomeOuId, CATALOGO_CARGOS_PADRAO } from '@/lib/catalogo-cargos'
+import {
+  buscarCargoPorNomeOuId,
+  formatarNomeCompletoCargo,
+  CargoItemHierarquia,
+} from '@/lib/catalogo-cargos'
 
 export interface SlotCargoData {
   slot: number
+  idCargo?: string
+  equipe: string
+  subequipe: string
+  area: string
   cargoNome: string
-  departamento: string
+  nomeCompletoFormatado: string
   peso: number
   nivelAcesso?: string
   status: 'ativo' | 'vazio' | 'bloqueado'
@@ -88,7 +96,10 @@ export async function obterEstadoCargosSlotsAction() {
         slots.push({
           slot: i,
           cargoNome: '',
-          departamento: '',
+          equipe: '',
+          subequipe: '',
+          area: '',
+          nomeCompletoFormatado: '',
           peso: 0,
           status: 'bloqueado',
         })
@@ -98,19 +109,27 @@ export async function obterEstadoCargosSlotsAction() {
       const cargoNome = cargosAtivosNomes[i - 1] || ''
       if (cargoNome) {
         const itemCatalogo = buscarCargoPorNomeOuId(cargoNome)
+        const formatado = itemCatalogo ? formatarNomeCompletoCargo(itemCatalogo) : cargoNome
         slots.push({
           slot: i,
-          cargoNome: itemCatalogo?.nome || cargoNome,
-          departamento: itemCatalogo?.departamento || 'Geral',
+          idCargo: itemCatalogo?.id,
+          equipe: itemCatalogo?.equipe || 'Geral',
+          subequipe: itemCatalogo?.subequipe || 'Geral',
+          area: itemCatalogo?.area || 'Geral',
+          cargoNome: itemCatalogo?.cargo || cargoNome,
+          nomeCompletoFormatado: formatado,
           peso: itemCatalogo?.peso ?? 1.0,
-          nivelAcesso: itemCatalogo?.nivelAcesso ?? 'Membro',
+          nivelAcesso: itemCatalogo?.nivelAcesso ?? 'MEMBRO',
           status: 'ativo',
         })
       } else {
         slots.push({
           slot: i,
           cargoNome: '',
-          departamento: '',
+          equipe: '',
+          subequipe: '',
+          area: '',
+          nomeCompletoFormatado: '',
           peso: 0,
           status: 'vazio',
         })
@@ -415,14 +434,15 @@ export async function decidirSolicitacaoGPAction(
 
           // Garante que o cargo exista na tabela cargos
           if (item) {
+            const permiteSala = ['ADMIN', 'GESTOR', 'LIDER'].includes(item.nivelAcesso)
             await supabase.from('cargos').upsert(
               {
                 id: item.id,
-                nome_cargo: item.nome,
-                departamento: item.departamento,
+                nome_cargo: formatarNomeCompletoCargo(item),
+                departamento: item.equipe,
                 nivel_acesso: item.nivelAcesso,
                 peso: Math.round(item.peso),
-                permite_abrir_sala: item.permiteAbrirSala || false,
+                permite_abrir_sala: permiteSala,
               },
               { onConflict: 'id' }
             )

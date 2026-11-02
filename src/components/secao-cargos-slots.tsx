@@ -10,9 +10,14 @@ import {
   solicitarDesbloqueioSlotAction,
 } from '@/app/cargos/actions'
 import {
-  DEPARTAMENTOS_RAMO,
-  obterCargosPorDepartamento,
-  buscarCargoPorNomeOuId,
+  EQUIPES_OFICIAIS,
+  obterSubequipes,
+  obterAreas,
+  obterCargosDisponiveis,
+  buscarCargoPorId,
+  buscarCargoPorTexto,
+  formatarNomeCompletoCargo,
+  CargoItemHierarquia,
 } from '@/lib/catalogo-cargos'
 
 interface SecaoCargosSlotsProps {
@@ -34,8 +39,12 @@ export default function SecaoCargosSlots({ cargosIniciaisUsuario }: SecaoCargosS
 
   // Slot em edição / seleção (1 a 5)
   const [slotEmEdicao, setSlotEmEdicao] = useState<number | null>(null)
-  const [deptoSelecionado, setDeptoSelecionado] = useState<string>('')
-  const [cargoSelecionado, setCargoSelecionado] = useState<string>('')
+
+  // Estados dos 4 Níveis de Seleção Hierárquica
+  const [equipeSel, setEquipeSel] = useState<string>('')
+  const [subequipeSel, setSubequipeSel] = useState<string>('')
+  const [areaSel, setAreaSel] = useState<string>('')
+  const [cargoIdSel, setCargoIdSel] = useState<string>('')
 
   // Modal de desbloqueio de slot extra (Slots 4 e 5)
   const [modalDesbloqueioAberto, setModalDesbloqueioAberto] = useState(false)
@@ -60,15 +69,30 @@ export default function SecaoCargosSlots({ cargosIniciaisUsuario }: SecaoCargosS
       for (let i = 1; i <= 5; i++) {
         const estaBloqueado = i > 3
         if (estaBloqueado) {
-          fallbackSlots.push({ slot: i, cargoNome: '', departamento: '', peso: 0, status: 'bloqueado' })
-        } else {
-          const cNome = cargosIniciaisUsuario[i - 1] || ''
-          const item = buscarCargoPorNomeOuId(cNome)
           fallbackSlots.push({
             slot: i,
-            cargoNome: item?.nome || cNome,
-            departamento: item?.departamento || 'Geral',
+            cargoNome: '',
+            equipe: '',
+            subequipe: '',
+            area: '',
+            nomeCompletoFormatado: '',
+            peso: 0,
+            status: 'bloqueado',
+          })
+        } else {
+          const cNome = cargosIniciaisUsuario[i - 1] || ''
+          const item = buscarCargoPorTexto(cNome)
+          const formatado = item ? formatarNomeCompletoCargo(item) : cNome
+          fallbackSlots.push({
+            slot: i,
+            idCargo: item?.id,
+            equipe: item?.equipe || 'Geral',
+            subequipe: item?.subequipe || 'Geral',
+            area: item?.area || 'Geral',
+            cargoNome: item?.cargo || cNome,
+            nomeCompletoFormatado: formatado,
             peso: item?.peso ?? (cNome ? 1.0 : 0),
+            nivelAcesso: item?.nivelAcesso ?? 'MEMBRO',
             status: cNome ? 'ativo' : 'vazio',
           })
         }
@@ -84,16 +108,16 @@ export default function SecaoCargosSlots({ cargosIniciaisUsuario }: SecaoCargosS
   }, [])
 
   // Verifica se houve alguma alteração em relação aos slots originais
-  const cargosAtuaisNomes = slotsOriginais
-    .filter((s) => s.status === 'ativo' && s.cargoNome)
-    .map((s) => s.cargoNome)
+  const cargosAtuaisFormatados = slotsOriginais
+    .filter((s) => s.status === 'ativo' && s.nomeCompletoFormatado)
+    .map((s) => s.nomeCompletoFormatado)
 
-  const cargosPropostosNomes = slots
-    .filter((s) => s.status === 'ativo' && s.cargoNome)
-    .map((s) => s.cargoNome)
+  const cargosPropostosFormatados = slots
+    .filter((s) => s.status === 'ativo' && s.nomeCompletoFormatado)
+    .map((s) => s.nomeCompletoFormatado)
 
   const houveAlteracao =
-    JSON.stringify(cargosAtuaisNomes) !== JSON.stringify(cargosPropostosNomes)
+    JSON.stringify(cargosAtuaisFormatados) !== JSON.stringify(cargosPropostosFormatados)
 
   // Carga total acumulada proposta
   const cargaTotal = slots
@@ -103,57 +127,123 @@ export default function SecaoCargosSlots({ cargosIniciaisUsuario }: SecaoCargosS
   // Contagem de slots ativos
   const slotsOcupadosCount = slots.filter((s) => s.status === 'ativo').length
 
-  // Iniciar edição/adição em um slot
+  // Iniciar edição/adição em um slot com auto-detecção dos 4 níveis
   const handleIniciarEdicaoSlot = (slotNumero: number) => {
     const slotAtual = slots.find((s) => s.slot === slotNumero)
     setSlotEmEdicao(slotNumero)
-    if (slotAtual?.status === 'ativo' && slotAtual.departamento) {
-      setDeptoSelecionado(slotAtual.departamento)
-      setCargoSelecionado(slotAtual.cargoNome)
-    } else {
-      setDeptoSelecionado(DEPARTAMENTOS_RAMO[0])
-      const cargosPrimeiroDepto = obterCargosPorDepartamento(DEPARTAMENTOS_RAMO[0])
-      setCargoSelecionado(cargosPrimeiroDepto[0]?.nome || '')
+
+    let eqInicial = EQUIPES_OFICIAIS[0]
+    let subInicial = 'Geral'
+    let areaInicial = 'Geral'
+    let cargoIdInicial = ''
+
+    if (slotAtual?.status === 'ativo' && slotAtual.idCargo) {
+      const itemExistente = buscarCargoPorId(slotAtual.idCargo)
+      if (itemExistente) {
+        eqInicial = itemExistente.equipe
+        subInicial = itemExistente.subequipe || 'Geral'
+        areaInicial = itemExistente.area || 'Geral'
+        cargoIdInicial = itemExistente.id
+      }
+    } else if (slotAtual?.status === 'ativo' && slotAtual.equipe) {
+      eqInicial = slotAtual.equipe
+      subInicial = slotAtual.subequipe || 'Geral'
+      areaInicial = slotAtual.area || 'Geral'
     }
+
+    setEquipeSel(eqInicial)
+
+    const subsDisponiveis = obterSubequipes(eqInicial)
+    const subEscolhida = subsDisponiveis.includes(subInicial) ? subInicial : subsDisponiveis[0] || 'Geral'
+    setSubequipeSel(subEscolhida)
+
+    const areasDisponiveis = obterAreas(eqInicial, subEscolhida)
+    const areaEscolhida = areasDisponiveis.includes(areaInicial) ? areaInicial : areasDisponiveis[0] || 'Geral'
+    setAreaSel(areaEscolhida)
+
+    const cargosDisponiveis = obterCargosDisponiveis(eqInicial, subEscolhida, areaEscolhida)
+    const cargoEscolhido = cargosDisponiveis.find((c) => c.id === cargoIdInicial) || cargosDisponiveis[0]
+    setCargoIdSel(cargoEscolhido?.id || '')
+  }
+
+  // Mudança do Nível 1: Equipe
+  const handleMudancaEquipe = (novaEquipe: string) => {
+    setEquipeSel(novaEquipe)
+    const subs = obterSubequipes(novaEquipe)
+    const novaSub = subs[0] || 'Geral'
+    setSubequipeSel(novaSub)
+
+    const areas = obterAreas(novaEquipe, novaSub)
+    const novaArea = areas[0] || 'Geral'
+    setAreaSel(novaArea)
+
+    const cargos = obterCargosDisponiveis(novaEquipe, novaSub, novaArea)
+    setCargoIdSel(cargos[0]?.id || '')
+  }
+
+  // Mudança do Nível 2: Subequipe
+  const handleMudancaSubequipe = (novaSubequipe: string) => {
+    setSubequipeSel(novaSubequipe)
+    const areas = obterAreas(equipeSel, novaSubequipe)
+    const novaArea = areas[0] || 'Geral'
+    setAreaSel(novaArea)
+
+    const cargos = obterCargosDisponiveis(equipeSel, novaSubequipe, novaArea)
+    setCargoIdSel(cargos[0]?.id || '')
+  }
+
+  // Mudança do Nível 3: Área
+  const handleMudancaArea = (novaArea: string) => {
+    setAreaSel(novaArea)
+    const cargos = obterCargosDisponiveis(equipeSel, subequipeSel, novaArea)
+    setCargoIdSel(cargos[0]?.id || '')
   }
 
   // Cancelar edição
   const handleCancelarEdicao = () => {
     setSlotEmEdicao(null)
-    setDeptoSelecionado('')
-    setCargoSelecionado('')
   }
 
   // Salvar cargo no slot localmente
   const handleConfirmarCargoNoSlot = (slotNumero: number) => {
-    if (!cargoSelecionado) {
+    if (!cargoIdSel) {
       setFeedback({ tipo: 'aviso', texto: 'Selecione um cargo válido.' })
       return
     }
 
-    // Verifica se já não escolheu o mesmo cargo em outro slot
+    const itemCatalogo = buscarCargoPorId(cargoIdSel)
+    if (!itemCatalogo) {
+      setFeedback({ tipo: 'erro', texto: 'Cargo não encontrado no catálogo oficial.' })
+      return
+    }
+
+    // Verifica se já não escolheu o mesmo cargo ID em outro slot
     const jaEscolhidoEmOutroSlot = slots.some(
-      (s) => s.slot !== slotNumero && s.cargoNome === cargoSelecionado && s.status === 'ativo'
+      (s) => s.slot !== slotNumero && s.idCargo === itemCatalogo.id && s.status === 'ativo'
     )
     if (jaEscolhidoEmOutroSlot) {
       setFeedback({
         tipo: 'erro',
-        texto: `O cargo "${cargoSelecionado}" já está ocupado em outro slot. Escolha uma função diferente.`,
+        texto: `Você já selecionou a função "${formatarNomeCompletoCargo(itemCatalogo)}" em outro slot. Escolha uma posição diferente.`,
       })
       return
     }
 
-    const itemCatalogo = buscarCargoPorNomeOuId(cargoSelecionado)
+    const formatado = formatarNomeCompletoCargo(itemCatalogo)
 
     setSlots((prev) =>
       prev.map((s) => {
         if (s.slot === slotNumero) {
           return {
             ...s,
-            cargoNome: itemCatalogo?.nome || cargoSelecionado,
-            departamento: itemCatalogo?.departamento || deptoSelecionado,
-            peso: itemCatalogo?.peso ?? 1.0,
-            nivelAcesso: itemCatalogo?.nivelAcesso ?? 'Membro',
+            idCargo: itemCatalogo.id,
+            equipe: itemCatalogo.equipe,
+            subequipe: itemCatalogo.subequipe,
+            area: itemCatalogo.area,
+            cargoNome: itemCatalogo.cargo,
+            nomeCompletoFormatado: formatado,
+            peso: itemCatalogo.peso,
+            nivelAcesso: itemCatalogo.nivelAcesso,
             status: 'ativo',
           }
         }
@@ -172,8 +262,12 @@ export default function SecaoCargosSlots({ cargosIniciaisUsuario }: SecaoCargosS
         if (s.slot === slotNumero) {
           return {
             ...s,
+            idCargo: undefined,
+            equipe: '',
+            subequipe: '',
+            area: '',
             cargoNome: '',
-            departamento: '',
+            nomeCompletoFormatado: '',
             peso: 0,
             status: 'vazio',
           }
@@ -195,7 +289,7 @@ export default function SecaoCargosSlots({ cargosIniciaisUsuario }: SecaoCargosS
   // Confirmar sem alteração
   const handleConfirmarSemAlteracoes = () => {
     startTransition(async () => {
-      const res = await confirmarCargosSemAlteracaoAction(cargosAtuaisNomes)
+      const res = await confirmarCargosSemAlteracaoAction(cargosAtuaisFormatados)
       if (res.sucesso) {
         setFeedback({ tipo: 'sucesso', texto: res.mensagem })
         carregarDados()
@@ -209,8 +303,8 @@ export default function SecaoCargosSlots({ cargosIniciaisUsuario }: SecaoCargosS
   const handleEnviarMovimentacaoGP = () => {
     startTransition(async () => {
       const res = await submeterMovimentacaoSlotsAction(
-        cargosAtuaisNomes,
-        cargosPropostosNomes,
+        cargosAtuaisFormatados,
+        cargosPropostosFormatados,
         justificativaMovimentacao
       )
       if (res.sucesso) {
@@ -251,6 +345,13 @@ export default function SecaoCargosSlots({ cargosIniciaisUsuario }: SecaoCargosS
     })
   }
 
+  // Elementos do nível ativo em edição
+  const subequipesDisponiveis = equipeSel ? obterSubequipes(equipeSel) : []
+  const areasDisponiveis = equipeSel && subequipeSel ? obterAreas(equipeSel, subequipeSel) : []
+  const cargosFinaisDisponiveis =
+    equipeSel && subequipeSel && areaSel ? obterCargosDisponiveis(equipeSel, subequipeSel, areaSel) : []
+  const cargoPreview = buscarCargoPorId(cargoIdSel)
+
   if (carregando) {
     return (
       <div className="bg-white p-6 rounded-3xl shadow-xs border border-gray-100 flex items-center justify-center gap-2 text-slate-500 text-xs py-12 animate-pulse">
@@ -269,11 +370,11 @@ export default function SecaoCargosSlots({ cargosIniciaisUsuario }: SecaoCargosS
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-primary text-xl">badge</span>
               <h3 className="font-headline font-bold text-gray-900 text-sm uppercase tracking-wider">
-                Cargos & Movimentação (Sistema de Slots)
+                Cargos & Movimentação (Hierarquia Completa por Slots)
               </h3>
             </div>
             <p className="text-[11px] text-gray-500 mt-0.5">
-              Você possui 3 slots liberados para atuação simultânea. Slots 4 e 5 exigem autorização da GP.
+              Escolha suas posições descendo de Equipe ➔ Subequipe ➔ Área ➔ Tipo de Membro.
             </p>
           </div>
 
@@ -420,19 +521,22 @@ export default function SecaoCargosSlots({ cargosIniciaisUsuario }: SecaoCargosS
               )
             }
 
-            // MODO DE SELEÇÃO / EDIÇÃO NO SLOT
+            // MODO DE SELEÇÃO HIERÁRQUICA COMPLETA EM 4 NÍVEIS
             if (isEmEdicao) {
-              const cargosDisponiveis = obterCargosPorDepartamento(deptoSelecionado)
+              const temAreaEspecifica = areasDisponiveis.some((a) => a !== 'Geral')
 
               return (
                 <div
                   key={item.slot}
-                  className="p-4 bg-blue-50/50 border-2 border-blue-400 rounded-2xl space-y-3 shadow-sm transition-all"
+                  className="p-4 bg-blue-50/70 border-2 border-blue-500 rounded-3xl space-y-3 shadow-md transition-all col-span-1 md:col-span-2 lg:col-span-1"
                 >
-                  <div className="flex items-center justify-between border-b border-blue-200 pb-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-blue-800">
-                      Escolhendo Cargo ({rotuloSlot})
-                    </span>
+                  <div className="flex items-center justify-between border-b border-blue-200 pb-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-blue-700 text-lg">account_tree</span>
+                      <span className="text-[11px] font-extrabold uppercase tracking-wider text-blue-900">
+                        Configurar {rotuloSlot}
+                      </span>
+                    </div>
                     <button
                       type="button"
                       onClick={handleCancelarEdicao}
@@ -442,52 +546,114 @@ export default function SecaoCargosSlots({ cargosIniciaisUsuario }: SecaoCargosS
                     </button>
                   </div>
 
-                  <div className="space-y-2 text-xs">
+                  {/* OS 4 PASSOS DE DRILL-DOWN */}
+                  <div className="space-y-2.5 text-xs">
+                    {/* NÍVEL 1: EQUIPE */}
                     <div>
-                      <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
-                        1. Equipe / Departamento
+                      <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1 flex items-center gap-1">
+                        <span className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[9px] font-extrabold">
+                          1
+                        </span>
+                        <span>Equipe / Capítulo</span>
                       </label>
                       <select
-                        value={deptoSelecionado}
-                        onChange={(e) => {
-                          const novoDepto = e.target.value
-                          setDeptoSelecionado(novoDepto)
-                          const novosCargos = obterCargosPorDepartamento(novoDepto)
-                          setCargoSelecionado(novosCargos[0]?.nome || '')
-                        }}
-                        className="w-full bg-white border border-slate-300 rounded-xl p-2 text-xs font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                        value={equipeSel}
+                        onChange={(e) => handleMudancaEquipe(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-xl p-2 text-xs font-semibold focus:ring-2 focus:ring-blue-500 outline-none text-slate-800"
                       >
-                        {DEPARTAMENTOS_RAMO.map((dep) => (
-                          <option key={dep} value={dep}>
-                            {dep}
+                        {EQUIPES_OFICIAIS.map((eq) => (
+                          <option key={eq} value={eq}>
+                            {eq}
                           </option>
                         ))}
                       </select>
                     </div>
 
+                    {/* NÍVEL 2: SUBEQUIPE */}
                     <div>
-                      <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
-                        2. Cargo Específico
+                      <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1 flex items-center gap-1">
+                        <span className="w-4 h-4 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[9px] font-extrabold">
+                          2
+                        </span>
+                        <span>Subequipe</span>
                       </label>
                       <select
-                        value={cargoSelecionado}
-                        onChange={(e) => setCargoSelecionado(e.target.value)}
-                        className="w-full bg-white border border-slate-300 rounded-xl p-2 text-xs font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                        value={subequipeSel}
+                        onChange={(e) => handleMudancaSubequipe(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-xl p-2 text-xs font-semibold focus:ring-2 focus:ring-blue-500 outline-none text-slate-800"
                       >
-                        {cargosDisponiveis.map((c) => (
-                          <option key={c.id} value={c.nome}>
-                            {c.nome} (Peso {c.peso.toFixed(1)})
+                        {subequipesDisponiveis.map((sub) => (
+                          <option key={sub} value={sub}>
+                            {sub}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* NÍVEL 3: ÁREA TÉCNICA (SE HOUVER) */}
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1 flex items-center gap-1">
+                        <span className="w-4 h-4 rounded-full bg-purple-600 text-white flex items-center justify-center text-[9px] font-extrabold">
+                          3
+                        </span>
+                        <span>Área Técnica {temAreaEspecifica ? '' : '(Geral)'}</span>
+                      </label>
+                      <select
+                        value={areaSel}
+                        onChange={(e) => handleMudancaArea(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-xl p-2 text-xs font-semibold focus:ring-2 focus:ring-blue-500 outline-none text-slate-800"
+                      >
+                        {areasDisponiveis.map((ar) => (
+                          <option key={ar} value={ar}>
+                            {ar}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* NÍVEL 4: TIPO DE MEMBRO / CARGO */}
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1 flex items-center gap-1">
+                        <span className="w-4 h-4 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[9px] font-extrabold">
+                          4
+                        </span>
+                        <span>Tipo de Membro / Cargo</span>
+                      </label>
+                      <select
+                        value={cargoIdSel}
+                        onChange={(e) => setCargoIdSel(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-xl p-2 text-xs font-semibold focus:ring-2 focus:ring-blue-500 outline-none text-slate-800"
+                      >
+                        {cargosFinaisDisponiveis.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.cargo} (Peso {c.peso.toFixed(1)}) • {c.nivelAcesso}
                           </option>
                         ))}
                       </select>
                     </div>
                   </div>
 
+                  {/* PRÉVIA VISUAL DO CAMINHO COMPLETO */}
+                  {cargoPreview && (
+                    <div className="p-2.5 bg-white rounded-xl border border-blue-200 text-[11px] space-y-1">
+                      <span className="text-[10px] font-bold uppercase text-blue-700 block">
+                        Caminho Selecionado:
+                      </span>
+                      <p className="font-extrabold text-blue-950">
+                        {cargoPreview.equipe} ➔ {cargoPreview.subequipe || 'Geral'} ➔ {cargoPreview.area || 'Geral'}{' '}
+                        ➔ <span className="text-emerald-700">{cargoPreview.cargo}</span>
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-medium">
+                        Carga Estatutária: Peso {cargoPreview.peso.toFixed(1)} • Nível {cargoPreview.nivelAcesso}
+                      </p>
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-2 pt-1">
                     <button
                       type="button"
                       onClick={() => handleConfirmarCargoNoSlot(item.slot)}
-                      className="flex-1 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1 shadow-xs transition-all cursor-pointer"
+                      className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
                     >
                       <span className="material-symbols-outlined text-sm">check</span>
                       <span>Aplicar ao Slot</span>
@@ -495,7 +661,7 @@ export default function SecaoCargosSlots({ cargosIniciaisUsuario }: SecaoCargosS
                     <button
                       type="button"
                       onClick={handleCancelarEdicao}
-                      className="py-1.5 px-3 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                      className="py-2 px-3 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
                     >
                       Voltar
                     </button>
@@ -562,19 +728,40 @@ export default function SecaoCargosSlots({ cargosIniciaisUsuario }: SecaoCargosS
 
                   <div className="space-y-1">
                     <div className="flex items-start gap-2">
-                      <span className="material-symbols-outlined text-indigo-700 text-lg mt-0.5">
+                      <span className="material-symbols-outlined text-indigo-700 text-xl mt-0.5 shrink-0">
                         workspace_premium
                       </span>
                       <div>
-                        <h4 className="font-bold text-xs text-indigo-950 leading-snug">{item.cargoNome}</h4>
-                        <p className="text-[11px] text-indigo-700 font-medium">{item.departamento}</p>
+                        {/* TIPO DE MEMBRO / CARGO EM DESTAQUE */}
+                        <h4 className="font-bold text-sm text-indigo-950 leading-tight">
+                          {item.cargoNome || 'Membro'}
+                        </h4>
+
+                        {/* HIERARQUIA COMPLETA EM TAGS */}
+                        <div className="flex items-center gap-1 flex-wrap mt-1">
+                          {item.equipe && (
+                            <span className="text-[10px] font-bold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-md">
+                              {item.equipe}
+                            </span>
+                          )}
+                          {item.subequipe && item.subequipe !== 'Geral' && (
+                            <span className="text-[10px] font-semibold bg-purple-100 text-purple-800 px-2 py-0.5 rounded-md">
+                              {item.subequipe}
+                            </span>
+                          )}
+                          {item.area && item.area !== 'Geral' && (
+                            <span className="text-[10px] font-medium bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md">
+                              {item.area}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-1.5 pt-1">
                     <span className="text-[10px] bg-white border border-indigo-200 text-indigo-800 font-semibold px-2 py-0.5 rounded-md">
-                      Peso Estatutário: {item.peso.toFixed(1)}
+                      Peso Estatutário: {item.peso ? item.peso.toFixed(1) : '1.0'}
                     </span>
                   </div>
                 </div>
