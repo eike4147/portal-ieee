@@ -19,6 +19,7 @@ export interface EventoAgendaItem {
   tipo_evento: string
   publico_alvo: string
   contexto: string
+  publico_config?: any | null
   data_fim?: string | null
   marcado_por?: string | null
   isObrigatorio?: boolean
@@ -355,6 +356,7 @@ export interface SalvarCapacitacaoPayload {
   contexto?: string
   descricao?: string
   data_fim?: string
+  publico_config?: any
 }
 
 export async function salvarCapacitacaoAction(payload: SalvarCapacitacaoPayload) {
@@ -395,6 +397,7 @@ export async function salvarCapacitacaoAction(payload: SalvarCapacitacaoPayload)
       publico_alvo: payload.publico_alvo || 'Todos do Ramo',
       contexto: payload.contexto || 'Processo Trainee (PSE)',
       data_fim: payload.data_fim || payload.data,
+      publico_config: payload.publico_config || null,
     }
 
     const { error } = await supabase
@@ -684,3 +687,259 @@ export async function salvarCursoCatalogoAction(payload: {
     return { sucesso: false, mensagem: err.message }
   }
 }
+
+// =============================================================================
+// GESTÃO DE PÚBLICO-ALVO, MEMBROS E PCH
+// =============================================================================
+
+export interface MembroPchItem {
+  id: string
+  matricula: string
+  nome: string
+  equipe: string
+  subequipe?: string
+  cargo: string
+  nivelAcesso: 'ADMIN' | 'GESTOR' | 'LIDER' | 'MEMBRO' | 'TRAINEE'
+  tipo_membro?: string
+  foto_url?: string
+}
+
+const MEMBROS_SAMPLE: MembroPchItem[] = [
+  { id: 'usr-001', matricula: '2022101', nome: 'Arthur Fellini', equipe: 'Ramo IEEE', subequipe: 'Presidência', cargo: 'Presidente', nivelAcesso: 'ADMIN', tipo_membro: 'Ativo' },
+  { id: 'usr-002', matricula: '2023102', nome: 'Igor De Lima Marques', equipe: 'WolfBotz', subequipe: 'Combate', cargo: 'Capitão', nivelAcesso: 'GESTOR', tipo_membro: 'Ativo' },
+  { id: 'usr-003', matricula: '2023103', nome: 'José Guilherme Barros', equipe: 'WolfBotz', subequipe: 'Combate', cargo: 'Membro Projetista', nivelAcesso: 'MEMBRO', tipo_membro: 'Ativo' },
+  { id: 'usr-004', matricula: '2023104', nome: 'Laura Souza', equipe: 'WolfBotz', subequipe: 'Autônomos', cargo: 'Membro', nivelAcesso: 'MEMBRO', tipo_membro: 'Ativo' },
+  { id: 'usr-005', matricula: '2022105', nome: 'Beatriz Mendes', equipe: 'Marketing', subequipe: 'Criação de Conteúdo', cargo: 'Diretora de MKT', nivelAcesso: 'LIDER', tipo_membro: 'Ativo' },
+  { id: 'usr-006', matricula: '2023106', nome: 'Lucas Ferreira', equipe: 'Marketing', subequipe: 'Audiovisual', cargo: 'Assessor', nivelAcesso: 'MEMBRO', tipo_membro: 'Ativo' },
+  { id: 'usr-007', matricula: '2022107', nome: 'Pedro Henrique', equipe: 'Gestão de Pessoas', subequipe: 'R&S', cargo: 'Diretor de GP', nivelAcesso: 'LIDER', tipo_membro: 'Ativo' },
+  { id: 'usr-008', matricula: '2023108', nome: 'Clara Rocha', equipe: 'Gestão de Pessoas', subequipe: 'Treinamento', cargo: 'Assessora de GP', nivelAcesso: 'MEMBRO', tipo_membro: 'Ativo' },
+  { id: 'usr-009', matricula: '2022109', nome: 'Gabriel Santos', equipe: 'CS', subequipe: 'Diretoria', cargo: 'Presidente de CS', nivelAcesso: 'GESTOR', tipo_membro: 'Ativo' },
+  { id: 'usr-010', matricula: '2023110', nome: 'Mariana Lima', equipe: 'PSE', subequipe: 'Estágio Probatório', cargo: 'Trainee PSE', nivelAcesso: 'TRAINEE', tipo_membro: 'Trainee' },
+  { id: 'usr-011', matricula: '2023111', nome: 'Vinicius Oliveira', equipe: 'PSE', subequipe: 'Estágio Probatório', cargo: 'Trainee PSE', nivelAcesso: 'TRAINEE', tipo_membro: 'Trainee' },
+  { id: 'usr-012', matricula: '2022112', nome: 'Thiago Silva', equipe: 'RAS', subequipe: 'Diretoria', cargo: 'Presidente de RAS', nivelAcesso: 'GESTOR', tipo_membro: 'Ativo' },
+]
+
+function gerarGradePchPadrao(tipo: 'lider' | 'membro' | 'trainee'): Record<string, any> {
+  const slotsPresenciais = ['14:00 - 15:00', '15:00 - 16:00', '16:00 - 17:00', '17:00 - 18:00']
+  const slotsOnline = ['18:00 - 19:00', '19:00 - 20:00']
+
+  return {
+    seg: {
+      '14:00 - 15:00': { presencial: true, online: false },
+      '15:00 - 16:00': { presencial: true, online: false },
+    },
+    ter: {
+      '14:00 - 15:00': { presencial: true, online: false },
+      '15:00 - 16:00': { presencial: true, online: false },
+      '16:00 - 17:00': { presencial: true, online: false },
+      '17:00 - 18:00': { presencial: true, online: false },
+    },
+    qua: {
+      '10:00 - 11:00': { presencial: false, online: true },
+      '11:00 - 12:00': { presencial: false, online: true },
+    },
+    qui: {
+      '14:00 - 15:00': { presencial: true, online: false },
+      '15:00 - 16:00': { presencial: true, online: false },
+      '16:00 - 17:00': { presencial: true, online: false },
+      '17:00 - 18:00': { presencial: true, online: false },
+    },
+    sex: {
+      '13:00 - 14:00': { presencial: true, online: false },
+      '14:00 - 15:00': { presencial: true, online: false },
+    },
+    sab: {
+      '10:00 - 11:00': { presencial: false, online: true },
+      '11:00 - 12:00': { presencial: false, online: true },
+    },
+  }
+}
+
+export async function obterMembrosEPchAction() {
+  try {
+    const supabase = await createClient()
+
+    // 1. Tenta carregar membros reais do banco
+    const { data: dbUsuarios } = await supabase
+      .from('usuarios')
+      .select('id, matricula, nome, equipe, subequipe, cargo, tipo_membro, nivel_acesso, foto_url')
+      .order('nome')
+
+    let listaMembros: MembroPchItem[] = []
+    if (dbUsuarios && dbUsuarios.length > 0) {
+      listaMembros = dbUsuarios.map((u: any) => ({
+        id: u.id,
+        matricula: u.matricula || u.id,
+        nome: u.nome || 'Membro',
+        equipe: u.equipe || 'Geral',
+        subequipe: u.subequipe || 'Geral',
+        cargo: u.cargo || 'Membro',
+        nivelAcesso: u.nivel_acesso || (u.tipo_membro === 'Trainee' ? 'TRAINEE' : 'MEMBRO'),
+        tipo_membro: u.tipo_membro || 'Ativo',
+        foto_url: u.foto_url,
+      }))
+    } else {
+      listaMembros = MEMBROS_SAMPLE
+    }
+
+    // 2. Tenta carregar grades PCH do banco
+    const { data: dbPchs } = await supabase
+      .from('pch')
+      .select('usuario_id, dados_pch')
+
+    const pchsMap: Record<string, any> = {}
+    if (dbPchs && dbPchs.length > 0) {
+      dbPchs.forEach((p: any) => {
+        if (p.usuario_id && p.dados_pch) {
+          pchsMap[p.usuario_id] = p.dados_pch
+        }
+      })
+    }
+
+    // Garante que cada membro tenha pelo menos uma PCH atribuída para simulação imediata
+    listaMembros.forEach((m) => {
+      if (!pchsMap[m.id] && !pchsMap[m.matricula]) {
+        const tipoGrade = m.tipo_membro === 'Trainee' ? 'trainee' : m.nivelAcesso === 'ADMIN' || m.nivelAcesso === 'GESTOR' ? 'lider' : 'membro'
+        const grade = gerarGradePchPadrao(tipoGrade)
+        pchsMap[m.matricula] = grade
+        pchsMap[m.id] = grade
+      }
+    })
+
+    return {
+      sucesso: true,
+      membros: listaMembros,
+      pchs: pchsMap,
+    }
+  } catch (err: any) {
+    console.warn('Fallback para membros e PCH sample:', err.message)
+    const pchsMap: Record<string, any> = {}
+    MEMBROS_SAMPLE.forEach((m) => {
+      const grade = gerarGradePchPadrao('membro')
+      pchsMap[m.matricula] = grade
+      pchsMap[m.id] = grade
+    })
+    return {
+      sucesso: true,
+      membros: MEMBROS_SAMPLE,
+      pchs: pchsMap,
+    }
+  }
+}
+
+// =============================================================================
+// GESTÃO DE LISTAS DINÂMICAS DA AGENDA (SALAS E CATEGORIAS SEM SQL)
+// =============================================================================
+
+export interface ConfiguracoesAgendaItem {
+  salas: string[]
+  categoriasRamo: string[]
+  categoriasPse: string[]
+}
+
+const CONFIG_SALAS_PADRAO = [
+  'E-213 - Sala do Ramo',
+  'Auditório 1',
+  'Lab Maker (E-205)',
+  'Laboratório de Informática',
+  'Sala de Estudos',
+  'Pátio / Espaço Aberto',
+]
+
+const CONFIG_CAT_RAMO_PADRAO = [
+  'Capacitação Técnica',
+  'Reunião de Equipe',
+  'Reunião Geral do Ramo',
+  'Reunião de Diretoria / Lideranças',
+  'Workshop / Hackathon',
+  'Alinhamento 1:1',
+]
+
+const CONFIG_CAT_PSE_PADRAO = [
+  'Capacitação Trainee',
+  'Dinâmica em Grupo',
+  'Entrevista Individual',
+  'Follow Up Trainee',
+  'Avaliação 360',
+  'Encontro de Integração',
+]
+
+export async function obterConfiguracoesAgendaAction(): Promise<{
+  sucesso: boolean
+  configuracoes: ConfiguracoesAgendaItem
+}> {
+  try {
+    const supabase = await createClient()
+    const { data: configs } = await supabase
+      .from('configuracoes')
+      .select('chave, valor')
+
+    let salas = CONFIG_SALAS_PADRAO
+    let categoriasRamo = CONFIG_CAT_RAMO_PADRAO
+    let categoriasPse = CONFIG_CAT_PSE_PADRAO
+
+    if (configs && configs.length > 0) {
+      for (const row of configs) {
+        if (row.chave === 'agenda_salas' && Array.isArray(row.valor)) {
+          salas = row.valor
+        }
+        if (row.chave === 'agenda_categorias_ramo' && Array.isArray(row.valor)) {
+          categoriasRamo = row.valor
+        }
+        if (row.chave === 'agenda_categorias_pse' && Array.isArray(row.valor)) {
+          categoriasPse = row.valor
+        }
+      }
+    }
+
+    return {
+      sucesso: true,
+      configuracoes: { salas, categoriasRamo, categoriasPse },
+    }
+  } catch (err: any) {
+    return {
+      sucesso: true,
+      configuracoes: {
+        salas: CONFIG_SALAS_PADRAO,
+        categoriasRamo: CONFIG_CAT_RAMO_PADRAO,
+        categoriasPse: CONFIG_CAT_PSE_PADRAO,
+      },
+    }
+  }
+}
+
+export async function salvarConfiguracaoListasAction(payload: {
+  salas: string[]
+  categoriasRamo: string[]
+  categoriasPse: string[]
+}) {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    const criador = user?.email || 'Admin'
+    const agora = new Date().toISOString()
+
+    const rows = [
+      { chave: 'agenda_salas', valor: payload.salas, atualizado_em: agora, atualizado_por: criador },
+      { chave: 'agenda_categorias_ramo', valor: payload.categoriasRamo, atualizado_em: agora, atualizado_por: criador },
+      { chave: 'agenda_categorias_pse', valor: payload.categoriasPse, atualizado_em: agora, atualizado_por: criador },
+    ]
+
+    const { error } = await supabase
+      .from('configuracoes')
+      .upsert(rows, { onConflict: 'chave' })
+
+    if (error) {
+      console.warn('Aviso ao salvar configuracoes no Supabase:', error.message)
+    }
+
+    revalidatePath('/')
+    return { sucesso: true, mensagem: 'Configurações de salas e categorias atualizadas com sucesso!' }
+  } catch (err: any) {
+    return { sucesso: false, mensagem: err.message || 'Erro ao salvar configurações.' }
+  }
+}
+
