@@ -51,6 +51,7 @@ export async function salvarPCHAction(payload: SalvarPCHPayload) {
 
 export interface DadosMembroPayload {
   nome_civil?: string
+  apelido?: string
   nome_social?: string
   data_nascimento?: string
   cpf?: string
@@ -117,9 +118,10 @@ export async function salvarDadosCadastraisAction(dados: DadosMembroPayload) {
 
     const agora = new Date().toISOString()
 
-    const payloadFormatado = {
+    const payloadFormatado: Record<string, any> = {
       usuario_id: user.id,
       nome_civil: dados.nome_civil?.trim() || null,
+      apelido: dados.apelido?.trim() || null,
       nome_social: dados.nome_social?.trim() || null,
       data_nascimento: dados.data_nascimento || null,
       cpf: dados.cpf?.trim() || null,
@@ -150,9 +152,18 @@ export async function salvarDadosCadastraisAction(dados: DadosMembroPayload) {
       atualizado_em: agora,
     }
 
-    const { error: errorDados } = await supabase
+    let { error: errorDados } = await supabase
       .from('dados_membros')
       .upsert(payloadFormatado, { onConflict: 'usuario_id' })
+
+    if (errorDados && errorDados.message?.includes('apelido')) {
+      console.warn('Coluna apelido ainda não existe em dados_membros no Supabase. Salvando sem ela.')
+      delete payloadFormatado.apelido
+      const retry = await supabase
+        .from('dados_membros')
+        .upsert(payloadFormatado, { onConflict: 'usuario_id' })
+      errorDados = retry.error
+    }
 
     if (errorDados) {
       console.error('Erro ao salvar dados_membros:', errorDados)

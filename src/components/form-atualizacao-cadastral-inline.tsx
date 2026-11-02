@@ -42,6 +42,7 @@ const FormAtualizacaoCadastralInline = forwardRef<
 
   // ESTADO DO FORMULÁRIO (ETAPA 1: PESSOAIS & CONTATO)
   const [nomeCivil, setNomeCivil] = useState('')
+  const [apelido, setApelido] = useState('')
   const [nomeSocial, setNomeSocial] = useState('')
   const [dataNascimento, setDataNascimento] = useState('')
   const [cpf, setCpf] = useState('')
@@ -102,6 +103,7 @@ const FormAtualizacaoCadastralInline = forwardRef<
 
     // Passo 1
     setNomeCivil(d.nome_civil || usuario?.nome || '')
+    setApelido(d.apelido || '')
     setNomeSocial(d.nome_social || '')
     setDataNascimento(d.data_nascimento || '')
     setCpf(d.cpf ? aplicarMascaraCPF(d.cpf) : '')
@@ -368,6 +370,7 @@ const FormAtualizacaoCadastralInline = forwardRef<
 
       const payload: DadosMembroPayload = {
         nome_civil: nomeCivil,
+        apelido: apelido,
         nome_social: nomeSocial,
         data_nascimento: dataNascimento,
         cpf: cpf,
@@ -534,6 +537,18 @@ const FormAtualizacaoCadastralInline = forwardRef<
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
+                <label className="font-bold text-slate-700 block mb-1">
+                  Apelido <span className="text-blue-600 font-normal">(como prefere ser chamado no Ramo)</span>
+                </label>
+                <input
+                  type="text"
+                  value={apelido}
+                  onChange={(e) => setApelido(e.target.value)}
+                  placeholder="Ex: Luquinhas, Zeca, etc."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-semibold focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                />
+              </div>
+              <div>
                 <label className="font-bold text-slate-700 block mb-1">Nome Social (se houver)</label>
                 <input
                   type="text"
@@ -543,6 +558,9 @@ const FormAtualizacaoCadastralInline = forwardRef<
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
                 />
               </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="font-bold text-slate-700 block mb-1">Data de Nascimento *</label>
                 <input
@@ -552,9 +570,6 @@ const FormAtualizacaoCadastralInline = forwardRef<
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-semibold focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
                 />
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="font-bold text-slate-700 block mb-1">
                   CPF (apenas números) *
@@ -568,22 +583,23 @@ const FormAtualizacaoCadastralInline = forwardRef<
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-semibold focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
                 />
               </div>
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Identificação Étnico-Racial *</label>
-                <select
-                  value={etnia}
-                  onChange={(e) => setEtnia(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-medium focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                >
-                  <option value="">Selecione...</option>
-                  <option value="Amarela">Amarela</option>
-                  <option value="Branca">Branca</option>
-                  <option value="Indígena">Indígena</option>
-                  <option value="Parda">Parda</option>
-                  <option value="Preta">Preta</option>
-                  <option value="Prefiro não informar">Prefiro não informar</option>
-                </select>
-              </div>
+            </div>
+
+            <div>
+              <label className="font-bold text-slate-700 block mb-1">Identificação Étnico-Racial *</label>
+              <select
+                value={etnia}
+                onChange={(e) => setEtnia(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-medium focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+              >
+                <option value="">Selecione...</option>
+                <option value="Amarela">Amarela</option>
+                <option value="Branca">Branca</option>
+                <option value="Indígena">Indígena</option>
+                <option value="Parda">Parda</option>
+                <option value="Preta">Preta</option>
+                <option value="Prefiro não informar">Prefiro não informar</option>
+              </select>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

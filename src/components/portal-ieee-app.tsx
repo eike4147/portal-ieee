@@ -1935,6 +1935,12 @@ export default function PortalIEEEApp({
                           </span>
                         </div>
                         <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100">
+                          <span className="text-gray-400 text-[10px] font-bold uppercase block">Apelido</span>
+                          <span className="font-bold text-blue-700">
+                            {dadosCadastrais?.apelido || 'Não informado'}
+                          </span>
+                        </div>
+                        <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100">
                           <span className="text-gray-400 text-[10px] font-bold uppercase block">Nome Social</span>
                           <span className="font-semibold text-gray-700">
                             {dadosCadastrais?.nome_social || 'Não informado'}
@@ -2854,6 +2860,12 @@ export default function PortalIEEEApp({
                       <span className="text-gray-400 font-bold text-[10px] uppercase block">Status</span>
                       <span className="font-bold text-emerald-600">{membroFicha.status || 'Ativo'}</span>
                     </div>
+                    {membroFicha.dados?.apelido && (
+                      <div className="p-3 bg-blue-50/70 rounded-xl border border-blue-100 col-span-2">
+                        <span className="text-blue-700 font-bold text-[10px] uppercase block">Apelido no Ramo</span>
+                        <span className="font-bold text-blue-900">{membroFicha.dados.apelido}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
