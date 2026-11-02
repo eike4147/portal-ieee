@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useRef } from 'react'
 import { toggleSalaAction } from '@/app/sala/actions'
 import { logoutAction } from '@/app/actions'
 import {
@@ -10,7 +10,9 @@ import {
   confirmarDadosSemAlteracaoAction,
   type SalvarDadosCadastraisPayload,
 } from '@/app/perfil/actions'
-import ModalAtualizacaoCadastral from './modal-atualizacao-cadastral'
+import FormAtualizacaoCadastralInline, {
+  FormAtualizacaoCadastralInlineRef,
+} from './form-atualizacao-cadastral-inline'
 import { detectarCursoDaMatricula, sugerirPeriodoDaMatricula } from '@/lib/curso-matricula'
 
 interface UsuarioProps {
@@ -148,7 +150,9 @@ export default function PortalIEEEApp({
   const [dadosCadastrais, setDadosCadastrais] = useState<any>(
     dadosMembroInicial || dadosCadastraisIniciais || null
   )
-  const [modalAtualizacaoCadastralAberto, setModalAtualizacaoCadastralAberto] = useState(false)
+  const [modoEdicaoCadastral, setModoEdicaoCadastral] = useState(false)
+  const [isSalvandoCadastral, setIsSalvandoCadastral] = useState(false)
+  const formCadastralRef = useRef<FormAtualizacaoCadastralInlineRef>(null)
   const [feedbackCadastral, setFeedbackCadastral] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null)
   const [abaFichaMembro, setAbaFichaMembro] = useState<'pessoais' | 'saude' | 'ieee'>('pessoais')
 
@@ -1779,54 +1783,98 @@ export default function PortalIEEEApp({
                 {/* SUBVIEW: DADOS CADASTRAIS (DIVIDIDO EM 3 ETAPAS) */}
                 {perfilSubView === 'cadastrais' && (
                   <div className="space-y-4">
-                    {/* BARRA DE TOPO COM STATUS DE ATUALIZAÇÃO E BOTÕES DE AÇÃO */}
-                    <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 p-5 rounded-3xl text-white shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    {/* Header Dados Cadastrais (Referência PCH) */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-200">
-                            Ficha Cadastral Oficial
+                          <p className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Seus Dados Cadastrais
+                          </p>
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                              dadosCadastrais?.atualizado_em
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-amber-50 text-amber-700 border border-amber-200'
+                            }`}
+                          >
+                            {dadosCadastrais?.atualizado_em
+                              ? `Atualizado: ${new Date(dadosCadastrais.atualizado_em).toLocaleDateString('pt-BR')}`
+                              : 'Pendente de revisão'}
                           </span>
                         </div>
-                        <h4 className="font-headline font-bold text-lg mt-0.5">Seus Dados Cadastrais</h4>
-                        <p className="text-xs text-blue-100 font-medium mt-0.5">
-                          {dadosCadastrais?.atualizado_em
-                            ? `Última atualização em: ${new Date(dadosCadastrais.atualizado_em).toLocaleDateString('pt-BR')}`
-                            : 'Status: Cadastro pendente de revisão'}
+                        <p className="text-[11px] text-gray-400 mt-0.5">
+                          {modoEdicaoCadastral
+                            ? 'Edite suas informações nas 3 etapas abaixo e clique em "Salvar Dados".'
+                            : 'Visualize seus dados cadastrais. Clique em "Atualizar Meus Dados" para alterar.'}
                         </p>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            startTransition(async () => {
-                              const res = await confirmarDadosSemAlteracaoAction()
-                              if (res.success) {
-                                setFeedbackCadastral({ tipo: 'sucesso', texto: res.mensagem || 'Cadastro confirmado!' })
-                                setDadosCadastrais((prev: any) => ({
-                                  ...(prev || {}),
-                                  atualizado_em: new Date().toISOString(),
-                                }))
-                                setTimeout(() => setFeedbackCadastral(null), 3000)
-                              } else {
-                                setFeedbackCadastral({ tipo: 'erro', texto: res.error || 'Erro ao confirmar.' })
-                              }
-                            })
-                          }}
-                          className="px-3.5 py-2.5 bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                        >
-                          <span className="material-symbols-outlined text-sm text-emerald-300">check_circle</span>
-                          <span>Confirmar sem alterar</span>
-                        </button>
+                      <div className="flex items-center gap-2">
+                        {!modoEdicaoCadastral && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              startTransition(async () => {
+                                const res = await confirmarDadosSemAlteracaoAction()
+                                if (res.success) {
+                                  setFeedbackCadastral({ tipo: 'sucesso', texto: res.mensagem || 'Cadastro confirmado!' })
+                                  setDadosCadastrais((prev: any) => ({
+                                    ...(prev || {}),
+                                    atualizado_em: new Date().toISOString(),
+                                  }))
+                                  setTimeout(() => setFeedbackCadastral(null), 3000)
+                                } else {
+                                  setFeedbackCadastral({ tipo: 'erro', texto: res.error || 'Erro ao confirmar.' })
+                                }
+                              })
+                            }}
+                            className="px-3 py-1.5 bg-gray-50 hover:bg-gray-100 text-gray-600 border border-gray-200 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                          >
+                            <span className="material-symbols-outlined text-sm text-emerald-600">check_circle</span>
+                            <span>Confirmar sem alterar</span>
+                          </button>
+                        )}
+
+                        {modoEdicaoCadastral && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setModoEdicaoCadastral(false)
+                              setFeedbackCadastral(null)
+                            }}
+                            className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                          >
+                            Cancelar
+                          </button>
+                        )}
 
                         <button
                           type="button"
-                          onClick={() => setModalAtualizacaoCadastralAberto(true)}
-                          className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
+                          disabled={isSalvandoCadastral}
+                          onClick={() => {
+                            if (modoEdicaoCadastral) {
+                              formCadastralRef.current?.salvar()
+                            } else {
+                              setModoEdicaoCadastral(true)
+                              setFeedbackCadastral(null)
+                            }
+                          }}
+                          className={`px-3.5 py-1.5 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer ${
+                            modoEdicaoCadastral
+                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                              : 'bg-primary hover:bg-blue-700 text-white'
+                          }`}
                         >
-                          <span className="material-symbols-outlined text-sm">edit_square</span>
-                          <span>Atualizar Meus Dados</span>
+                          <span className="material-symbols-outlined text-sm">
+                            {isSalvandoCadastral ? 'sync' : modoEdicaoCadastral ? 'save' : 'edit'}
+                          </span>
+                          <span>
+                            {isSalvandoCadastral
+                              ? 'Salvando...'
+                              : modoEdicaoCadastral
+                              ? 'Salvar Dados'
+                              : 'Atualizar Meus Dados'}
+                          </span>
                         </button>
                       </div>
                     </div>
@@ -1847,7 +1895,29 @@ export default function PortalIEEEApp({
                       </div>
                     )}
 
-                    {/* 1. CARD ETAPA 1: IDENTIFICAÇÃO CIVIL & CONTATO */}
+                    {modoEdicaoCadastral ? (
+                      <FormAtualizacaoCadastralInline
+                        ref={formCadastralRef}
+                        usuario={usuario}
+                        dadosIniciais={dadosCadastrais}
+                        onPendingChange={setIsSalvandoCadastral}
+                        onCancelar={() => {
+                          setModoEdicaoCadastral(false)
+                          setFeedbackCadastral(null)
+                        }}
+                        onSalvoComSucesso={(novosDados) => {
+                          setDadosCadastrais(novosDados)
+                          setModoEdicaoCadastral(false)
+                          setFeedbackCadastral({
+                            tipo: 'sucesso',
+                            texto: 'Dados cadastrais atualizados com sucesso!',
+                          })
+                          setTimeout(() => setFeedbackCadastral(null), 3000)
+                        }}
+                      />
+                    ) : (
+                      <>
+                        {/* 1. CARD ETAPA 1: IDENTIFICAÇÃO CIVIL & CONTATO */}
                     <div className="bg-white p-5 rounded-3xl shadow-xs border border-gray-100 space-y-3.5">
                       <div className="flex items-center justify-between pb-2 border-b border-gray-100">
                         <div className="flex items-center gap-2 text-blue-700 font-bold text-xs uppercase tracking-wider">
@@ -2107,8 +2177,10 @@ export default function PortalIEEEApp({
                         </div>
                       </div>
                     </div>
-                  </div>
+                  </>
                 )}
+              </div>
+            )}
               </div>
             )}
           </div>
@@ -3013,15 +3085,6 @@ export default function PortalIEEEApp({
           </div>
         </div>
       )}
-      {/* 11. MODAL WIZARD DE ATUALIZAÇÃO CADASTRAL DO MEMBRO (3 PASSOS) */}
-      {/* ========================================================================= */}
-      <ModalAtualizacaoCadastral
-        aberto={modalAtualizacaoCadastralAberto}
-        onClose={() => setModalAtualizacaoCadastralAberto(false)}
-        usuario={usuario}
-        dadosIniciais={dadosCadastrais}
-        onSalvoComSucesso={(novosDados) => setDadosCadastrais(novosDados)}
-      />
     </div>
   )
 }
