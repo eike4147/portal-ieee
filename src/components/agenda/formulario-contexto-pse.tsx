@@ -69,20 +69,36 @@ export function FormularioContextoPse({
   onAtualizarParticipantes,
 }: FormularioContextoPseProps) {
   // =========================================================================
-  // 1. ESTADOS ESPECÍFICOS PARA CADA CATEGORIA
+  // 1. NORMALIZAÇÃO ROBUSTA DA CATEGORIA (SEM PROBLEMAS DE ACENTUAÇÃO/MAIÚSCULAS)
+  // =========================================================================
+  const tipoNorm = useMemo(() => {
+    return (tipoEvento || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+  }, [tipoEvento])
+
+  const eh360 = tipoNorm.includes('360')
+  const ehDinamica = tipoNorm.includes('dinam')
+  const ehEntrevista = tipoNorm.includes('entrevis')
+  const ehFollowUp = tipoNorm.includes('follow')
+  const ehCapacitacao = tipoNorm.includes('capacita') || (!eh360 && !ehDinamica && !ehEntrevista && !ehFollowUp)
+
+  // =========================================================================
+  // 2. ESTADOS ESPECÍFICOS PARA CADA CATEGORIA
   // =========================================================================
 
-  // 1.1 Capacitação Trainee (De-Para)
+  // 2.1 Capacitação Trainee (De-Para)
   const [cursoSelecionadoId, setCursoSelecionadoId] = useState(formNovoEvento.id_curso || '')
   const [buscaCurso, setBuscaCurso] = useState('')
   const [dropdownCursoAberto, setDropdownCursoAberto] = useState(false)
   const [verListaTrainees, setVerListaTrainees] = useState(false)
 
-  // 1.2 Reunião 360
-  const [grupo360SelecionadoId, setGrupo360SelecionadoId] = useState('')
+  // 2.2 Reunião 360
+  const [grupo360SelecionadoId, setGrupo360SelecionadoId] = useState(GRUPOS_TRAINEE_PADRAO[0]?.id || '')
 
-  // 1.3 Dinâmica em Grupo
-  const [avaliadoresDinamica, setAvaliadoresDinamica] = useState<string[]>([usuario.nome])
+  // 2.3 Dinâmica em Grupo
   const [capacidadePorTurma, setCapacidadePorTurma] = useState(8)
   const [turmasPropostas, setTurmasPropostas] = useState<
     Array<{
@@ -112,18 +128,17 @@ export function FormularioContextoPse({
     },
   ])
 
-  // 1.4 Entrevista Individual
+  // 2.4 Entrevista Individual
   const [candidatoEntrevistaMatricula, setCandidatoEntrevistaMatricula] = useState('')
   const [avaliador1Matricula, setAvaliador1Matricula] = useState(usuario.matricula || '')
   const [avaliador2Matricula, setAvaliador2Matricula] = useState('')
 
-  // 1.5 Follow-Up Semanal
+  // 2.5 Follow-Up Semanal
   const [grupoFollowUp, setGrupoFollowUp] = useState('TODOS')
-  const [prazoLimiteData, setPrazoLimiteData] = useState(formNovoEvento.data || '')
   const [prazoLimiteHora, setPrazoLimiteHora] = useState('23:59')
 
   // =========================================================================
-  // 2. FILTRAGEM DE SALAS E CHECAGEM DE CHOQUE EM TEMPO REAL
+  // 3. FILTRAGEM DE SALAS E CHECAGEM DE CHOQUE EM TEMPO REAL
   // =========================================================================
   const statusSalas = useMemo(() => {
     return verificarDisponibilidadeSalas(
@@ -144,12 +159,33 @@ export function FormularioContextoPse({
   ])
 
   // =========================================================================
-  // 3. EFEITOS DE RESOLUÇÃO AUTOMÁTICA POR CATEGORIA
+  // 4. EFEITOS E SINCRONIZAÇÃO DE TÍTULO / PÚBLICO
   // =========================================================================
 
-  // 3.1 Categoria 1.1: Capacitação Trainee (De-Para)
+  // Sincroniza título padrão inteligente quando a categoria muda
+  useEffect(() => {
+    if (ehDinamica) {
+      setFormNovoEvento((prev: any) => ({
+        ...prev,
+        nome_capacitacao: prev.nome_capacitacao && prev.nome_capacitacao.includes('Dinâmica')
+          ? prev.nome_capacitacao
+          : 'Dinâmica em Grupo - PSE 2026.1',
+        equipe_responsavel: 'Gestão de Recrutamento e Seleção (R&S)',
+      }))
+    } else if (ehFollowUp) {
+      setFormNovoEvento((prev: any) => ({
+        ...prev,
+        nome_capacitacao: prev.nome_capacitacao && prev.nome_capacitacao.includes('Follow')
+          ? prev.nome_capacitacao
+          : 'Follow-Up Semanal Trainee #1',
+        equipe_responsavel: 'Gestão de Pessoas (GP)',
+      }))
+    }
+  }, [ehDinamica, ehFollowUp, setFormNovoEvento])
+
+  // 4.1 Categoria 1.1: Capacitação Trainee (De-Para)
   const resolucaoCapacitacao = useMemo(() => {
-    if (tipoEvento !== 'Capacitação Trainee' || !cursoSelecionadoId) {
+    if (!ehCapacitacao || !cursoSelecionadoId) {
       return null
     }
     return resolverTraineesPorCursoDemanda(
@@ -158,29 +194,26 @@ export function FormularioContextoPse({
       DEMANDAS_PADRAO,
       todosMembros
     )
-  }, [tipoEvento, cursoSelecionadoId, todosMembros])
+  }, [ehCapacitacao, cursoSelecionadoId, todosMembros])
 
   useEffect(() => {
-    if (tipoEvento === 'Capacitação Trainee' && resolucaoCapacitacao) {
+    if (ehCapacitacao && resolucaoCapacitacao) {
       onAtualizarParticipantes(resolucaoCapacitacao.traineesResolvidos)
       setFormNovoEvento((prev: any) => ({
         ...prev,
         publico_alvo: `${resolucaoCapacitacao.traineesResolvidos.length} trainees (${resolucaoCapacitacao.gruposConvocados.map((g) => g.nome_grupo.split('(')[0].trim()).join(', ')})`,
       }))
     }
-  }, [tipoEvento, resolucaoCapacitacao, onAtualizarParticipantes, setFormNovoEvento])
+  }, [ehCapacitacao, resolucaoCapacitacao, onAtualizarParticipantes, setFormNovoEvento])
 
-  // 3.2 Categoria 1.2: Reunião 360
+  // 4.2 Categoria 1.2: Reunião 360
   const resolucao360 = useMemo(() => {
-    if (tipoEvento !== 'Reunião 360' && !tipoEvento.toLowerCase().includes('360')) {
-      return null
-    }
-    if (!grupo360SelecionadoId) return null
+    if (!eh360 || !grupo360SelecionadoId) return null
     return resolverPublicoReuniao360(grupo360SelecionadoId, GRUPOS_TRAINEE_PADRAO, todosMembros)
-  }, [tipoEvento, grupo360SelecionadoId, todosMembros])
+  }, [eh360, grupo360SelecionadoId, todosMembros])
 
   useEffect(() => {
-    if (resolucao360 && resolucao360.grupo) {
+    if (eh360 && resolucao360 && resolucao360.grupo) {
       const nomeCurtoGrupo = resolucao360.grupo.nome_grupo.split('•')[0].trim()
       setFormNovoEvento((prev: any) => ({
         ...prev,
@@ -190,9 +223,9 @@ export function FormularioContextoPse({
       }))
       onAtualizarParticipantes(resolucao360.participantesObrigatorios)
     }
-  }, [resolucao360, onAtualizarParticipantes, setFormNovoEvento])
+  }, [eh360, resolucao360, onAtualizarParticipantes, setFormNovoEvento])
 
-  // 3.3 Categoria 1.3: Dinâmica em Grupo
+  // 4.3 Categoria 1.3: Dinâmica em Grupo
   const traineesPseTodos = useMemo(() => {
     return todosMembros.filter(
       (m) => m.nivelAcesso === 'TRAINEE' || m.tipo_membro === 'Trainee' || m.cargo.toLowerCase().includes('trainee')
@@ -208,7 +241,7 @@ export function FormularioContextoPse({
     )
   }, [traineesPseTodos, pchsPorMembro, turmasPropostas, formNovoEvento.modalidade])
 
-  // 3.4 Categoria 1.4: Entrevista Individual
+  // 4.4 Categoria 1.4: Entrevista Individual
   const participantesEntrevista = useMemo(() => {
     const list: MembroParticipante[] = []
     const cand = todosMembros.find((m) => m.matricula === candidatoEntrevistaMatricula)
@@ -221,7 +254,7 @@ export function FormularioContextoPse({
   }, [candidatoEntrevistaMatricula, avaliador1Matricula, avaliador2Matricula, todosMembros])
 
   useEffect(() => {
-    if (tipoEvento === 'Entrevista Individual') {
+    if (ehEntrevista) {
       onAtualizarParticipantes(participantesEntrevista)
       const cand = todosMembros.find((m) => m.matricula === candidatoEntrevistaMatricula)
       if (cand) {
@@ -230,9 +263,18 @@ export function FormularioContextoPse({
           nome_capacitacao: `Entrevista Individual - ${cand.nome}`,
           publico_alvo: `1 Candidato (${cand.nome}) + Banca Avaliadora`,
         }))
+      } else {
+        setFormNovoEvento((prev: any) => ({
+          ...prev,
+          nome_capacitacao:
+            prev.nome_capacitacao && prev.nome_capacitacao.includes('Entrevista')
+              ? prev.nome_capacitacao
+              : 'Entrevista Individual - PSE 2026.1',
+          equipe_responsavel: 'Gestão de Recrutamento e Seleção (R&S)',
+        }))
       }
     }
-  }, [tipoEvento, participantesEntrevista, candidatoEntrevistaMatricula, todosMembros, onAtualizarParticipantes, setFormNovoEvento])
+  }, [ehEntrevista, participantesEntrevista, candidatoEntrevistaMatricula, todosMembros, onAtualizarParticipantes, setFormNovoEvento])
 
   // Slots de Ouro / PCH para a categoria ativa
   const slotsQuorum100Reuniao360 = useMemo(() => {
@@ -256,7 +298,7 @@ export function FormularioContextoPse({
   }, [participantesEntrevista, pchsPorMembro, formNovoEvento.modalidade, formNovoEvento.data])
 
   // =========================================================================
-  // RENDERIZAÇÃO ADAPTATIVA POR CATEGORIA DO CONTEXTO 1 (PSE)
+  // 5. RENDERIZAÇÃO DA INTERFACE ADAPTATIVA
   // =========================================================================
 
   return (
@@ -264,7 +306,7 @@ export function FormularioContextoPse({
       {/* ===================================================================== */}
       {/* 1.1 CAPACITAÇÃO TRAINEE */}
       {/* ===================================================================== */}
-      {tipoEvento === 'Capacitação Trainee' && (
+      {ehCapacitacao && (
         <div className="space-y-4">
           <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50/60 border border-blue-200 rounded-2xl space-y-3">
             <div className="flex items-center justify-between">
@@ -278,8 +320,8 @@ export function FormularioContextoPse({
 
             {/* Dropdown de Curso com Autocomplete */}
             <div className="relative">
-              <label className="text-[10px] font-bold text-gray-600 block mb-1">
-                1. Selecione o Curso do Catálogo Oficial *
+              <label className="text-[10px] font-bold text-gray-700 block mb-1">
+                1. Vincular Curso Oficial do Catálogo *
               </label>
               <input
                 type="text"
@@ -374,7 +416,7 @@ export function FormularioContextoPse({
       {/* ===================================================================== */}
       {/* 1.2 REUNIÃO 360 */}
       {/* ===================================================================== */}
-      {(tipoEvento === 'Reunião 360' || tipoEvento.toLowerCase().includes('360')) && (
+      {eh360 && (
         <div className="space-y-4">
           <div className="p-4 bg-gradient-to-r from-purple-50 to-indigo-50/60 border border-purple-200 rounded-2xl space-y-3">
             <div className="flex items-center justify-between">
@@ -388,7 +430,7 @@ export function FormularioContextoPse({
 
             {/* Dropdown de Grupos Trainee */}
             <div>
-              <label className="text-[10px] font-bold text-gray-600 block mb-1">
+              <label className="text-[10px] font-bold text-gray-700 block mb-1">
                 1. Selecione o Grupo Trainee Alvo *
               </label>
               <select
@@ -396,7 +438,6 @@ export function FormularioContextoPse({
                 onChange={(e) => setGrupo360SelecionadoId(e.target.value)}
                 className="w-full bg-white border border-purple-200 rounded-xl p-2.5 text-xs font-bold text-gray-800 outline-none focus:ring-2 focus:ring-purple-500 shadow-xs"
               >
-                <option value="">Selecione o grupo (ex: Grupo 01, Grupo 02...)</option>
                 {GRUPOS_TRAINEE_PADRAO.map((g) => (
                   <option key={g.id} value={g.id}>
                     {g.nome_grupo}
@@ -409,7 +450,7 @@ export function FormularioContextoPse({
             {resolucao360 && resolucao360.grupo && (
               <div className="p-3 bg-white rounded-xl border border-purple-100 space-y-2">
                 <div className="text-xs font-bold text-gray-900">
-                  👥 {resolucao360.participantesObrigatorios.length} Participantes Obrigatórios:
+                  👥 {resolucao360.participantesObrigatorios.length} Participantes Obrigatórios Convocados:
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {resolucao360.trainees.map((t) => (
@@ -419,14 +460,19 @@ export function FormularioContextoPse({
                   ))}
                   {resolucao360.assessorTecnico && (
                     <span className="px-2 py-0.5 rounded-md bg-blue-100 text-blue-900 font-bold text-[10px]">
-                      ⭐ Assessor: {resolucao360.assessorTecnico.nome.split(' ')[0]}
+                      ⭐ Assessor Técnico: {resolucao360.assessorTecnico.nome.split(' ')[0]}
+                    </span>
+                  )}
+                  {resolucao360.assessorRh && (
+                    <span className="px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-900 font-bold text-[10px]">
+                      ⭐ Assessor RH: {resolucao360.assessorRh.nome.split(' ')[0]}
                     </span>
                   )}
                 </div>
 
                 <div className="flex items-center gap-1.5 text-[11px] text-gray-600 bg-gray-50 p-2 rounded-lg border border-gray-200/80">
                   <span>🛡️</span>
-                  <span><strong>Auditoria Automática:</strong> Visível para as equipes de Gestão de Pessoas (GP) e Recrutamento & Seleção (R&S).</span>
+                  <span><strong>Auditoria Institucional:</strong> Visível automaticamente para Gestão de Pessoas (GP) e Recrutamento & Seleção (R&S).</span>
                 </div>
               </div>
             )}
@@ -477,7 +523,7 @@ export function FormularioContextoPse({
       {/* ===================================================================== */}
       {/* 1.3 DINÂMICA EM GRUPO */}
       {/* ===================================================================== */}
-      {tipoEvento === 'Dinâmica em Grupo' && (
+      {ehDinamica && (
         <div className="space-y-4">
           <div className="p-4 bg-gradient-to-r from-emerald-50 to-teal-50/60 border border-emerald-200 rounded-2xl space-y-3">
             <div className="flex items-center justify-between">
@@ -514,14 +560,14 @@ export function FormularioContextoPse({
                 Turmas do Pool Disponíveis para Escolha dos Trainees:
               </label>
               <div className="space-y-2">
-                {turmasPropostas.map((t, idx) => (
+                {turmasPropostas.map((t) => (
                   <div key={t.id} className="p-3 bg-white rounded-xl border border-gray-200 flex items-center justify-between">
                     <div>
                       <div className="font-bold text-gray-900 text-xs">
                         {t.titulo}: {t.diaSemana.toUpperCase()} ({t.slotHorario})
                       </div>
                       <div className="text-[10px] text-gray-500">
-                        Local: {t.sala} • Vagas: até {capacidadePorTurma} candidatos
+                        Local: {t.sala} • Capacidade: até {capacidadePorTurma} candidatos
                       </div>
                     </div>
                     <span className="text-[10px] font-bold bg-blue-50 text-primary px-2 py-1 rounded-md">
@@ -542,7 +588,7 @@ export function FormularioContextoPse({
       {/* ===================================================================== */}
       {/* 1.4 ENTREVISTA INDIVIDUAL */}
       {/* ===================================================================== */}
-      {tipoEvento === 'Entrevista Individual' && (
+      {ehEntrevista && (
         <div className="space-y-4">
           <div className="p-4 bg-gradient-to-r from-amber-50 to-orange-50/60 border border-amber-200 rounded-2xl space-y-3">
             <div className="flex items-center justify-between">
@@ -556,7 +602,7 @@ export function FormularioContextoPse({
 
             {/* Seleção do Trainee Candidato */}
             <div>
-              <label className="text-[10px] font-bold text-gray-600 block mb-1">
+              <label className="text-[10px] font-bold text-gray-700 block mb-1">
                 1. Candidato / Trainee Nominal *
               </label>
               <select
@@ -659,7 +705,7 @@ export function FormularioContextoPse({
       {/* ===================================================================== */}
       {/* 1.5 FOLLOW-UP SEMANAL */}
       {/* ===================================================================== */}
-      {(tipoEvento === 'Follow Up Trainee' || tipoEvento === 'Follow-Up Semanal' || tipoEvento.toLowerCase().includes('follow')) && (
+      {ehFollowUp && (
         <div className="space-y-4">
           <div className="p-4 bg-gradient-to-r from-slate-50 to-blue-50/50 border border-slate-200 rounded-2xl space-y-3">
             <div className="flex items-center justify-between">
@@ -672,7 +718,7 @@ export function FormularioContextoPse({
             </div>
 
             <div>
-              <label className="text-[10px] font-bold text-gray-600 block mb-1">
+              <label className="text-[10px] font-bold text-gray-700 block mb-1">
                 Grupos Trainee Destinatários
               </label>
               <select
@@ -719,10 +765,26 @@ export function FormularioContextoPse({
       )}
 
       {/* ===================================================================== */}
-      {/* CAMPOS COMUNS ADAPTATIVOS: DATA, HORÁRIO, MODALIDADE E SALA COM CHOQUE */}
+      {/* TÍTULO DA ATIVIDADE (EDITÁVEL) */}
       {/* ===================================================================== */}
       <div className="bg-white border border-gray-200 rounded-2xl p-4 space-y-3">
-        <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">
+        <div>
+          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1">
+            Título Oficial do Compromisso *
+          </label>
+          <input
+            type="text"
+            value={formNovoEvento.nome_capacitacao}
+            onChange={(e) => setFormNovoEvento({ ...formNovoEvento, nome_capacitacao: e.target.value })}
+            placeholder="Ex: Treinamento SolidWorks ou Reunião 360"
+            className="w-full bg-white border border-gray-200 rounded-xl p-2.5 text-xs font-bold text-gray-900 outline-none focus:ring-2 focus:ring-primary"
+          />
+        </div>
+
+        {/* ===================================================================== */}
+        {/* CAMPOS COMUNS: DATA, HORÁRIOS, MODALIDADE E SALA COM CHOQUE */}
+        {/* ===================================================================== */}
+        <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-wide pt-1 border-t border-gray-100">
           Data, Horários & Local (com Detector de Choque de Salas)
         </h4>
 
@@ -830,7 +892,7 @@ export function FormularioContextoPse({
         {/* Pauta / Descrição */}
         <div>
           <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-            {tipoEvento.toLowerCase().includes('360')
+            {eh360
               ? 'Pauta / Metas da Semana & Feedbacks'
               : 'Pauta / Descrição do Compromisso (Opcional)'}
           </label>
@@ -838,7 +900,7 @@ export function FormularioContextoPse({
             value={formNovoEvento.descricao}
             onChange={(e) => setFormNovoEvento({ ...formNovoEvento, descricao: e.target.value })}
             placeholder={
-              tipoEvento.toLowerCase().includes('360')
+              eh360
                 ? '• Metas da semana e status do projeto\n• Feedbacks individuais e do grupo\n• Dificuldades e bloqueios'
                 : 'Detalhes da atividade, objetivos, orientações prévias...'
             }

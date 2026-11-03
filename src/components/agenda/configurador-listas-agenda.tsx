@@ -33,11 +33,10 @@ export const CATEGORIAS_RAMO_PADRAO = [
 
 export const CATEGORIAS_PSE_PADRAO = [
   'Capacitação Trainee',
+  'Reunião 360',
   'Dinâmica em Grupo',
   'Entrevista Individual',
   'Follow Up Trainee',
-  'Avaliação 360',
-  'Encontro de Integração',
 ]
 
 export const ConfiguradorListasAgenda: React.FC<ConfiguradorListasAgendaProps> = ({

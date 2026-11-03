@@ -279,8 +279,7 @@ export default function PortalIEEEApp({
   // Filtros de Agenda
   const [filtroPesquisaAgenda, setFiltroPesquisaAgenda] = useState('')
 
-  // Novo Agendamento (Fluxo em 2 Passos com PCH)
-  const [etapaAgendamento, setEtapaAgendamento] = useState<1 | 2>(1)
+  // Novo Agendamento (Formulário Adaptativo Dinâmico com PCH)
   const [publicoConfig, setPublicoConfig] = useState<PublicoConfig>({
     modo: 'todos',
     niveis_cargos: [],
@@ -311,7 +310,7 @@ export default function PortalIEEEApp({
     modalidade: 'Presencial' as 'Presencial' | 'Online' | 'Gravada' | 'Híbrido',
     local_link: 'E-213 - Sala do Ramo',
     equipe_responsavel: 'Geral',
-    tipo_evento: 'Capacitação',
+    tipo_evento: 'Capacitação Trainee',
     publico_alvo: 'Todos do Ramo',
     contexto: 'Processo Trainee (PSE)',
     descricao: '',
@@ -550,9 +549,21 @@ export default function PortalIEEEApp({
   }
 
   const handleSalvarNovoEvento = async () => {
-    if (!formNovoEvento.nome_capacitacao.trim()) {
-      alert('Informe o título do evento.')
-      return
+    let tituloFinal = formNovoEvento.nome_capacitacao.trim()
+    if (!tituloFinal) {
+      const tipo = (formNovoEvento.tipo_evento || '').toLowerCase()
+      if (tipo.includes('360')) {
+        tituloFinal = 'Reunião 360 - Trainees'
+      } else if (tipo.includes('dinam')) {
+        tituloFinal = 'Dinâmica em Grupo - PSE 2026.1'
+      } else if (tipo.includes('entrevis')) {
+        tituloFinal = 'Entrevista Individual - PSE'
+      } else if (tipo.includes('follow')) {
+        tituloFinal = 'Follow-Up Semanal Trainee'
+      } else {
+        alert('Informe o título do evento.')
+        return
+      }
     }
     if (!formNovoEvento.data) {
       alert('Informe a data do evento.')
@@ -563,14 +574,14 @@ export default function PortalIEEEApp({
     try {
       const payloadComPublico = {
         ...formNovoEvento,
-        publico_alvo: formatarDescricaoPublico(publicoConfig, participantesResolvidos.length),
+        nome_capacitacao: tituloFinal,
+        publico_alvo: formNovoEvento.publico_alvo || formatarDescricaoPublico(publicoConfig, participantesResolvidos.length),
         publico_config: publicoConfig,
       }
       const res = await salvarCapacitacaoAction(payloadComPublico)
       if (res.sucesso) {
         alert(res.mensagem)
         setModalNovaCapAberto(false)
-        setEtapaAgendamento(1)
         setPublicoConfig({
           modo: 'todos',
           niveis_cargos: [],
@@ -1543,7 +1554,7 @@ export default function PortalIEEEApp({
                   modalidade: 'Presencial',
                   local_link: 'E-213 - Sala do Ramo',
                   equipe_responsavel: 'Geral',
-                  tipo_evento: 'Capacitação',
+                  tipo_evento: 'Capacitação Trainee',
                   publico_alvo: 'Todos do Ramo',
                   contexto: 'Processo Trainee (PSE)',
                   descricao: '',
@@ -4131,207 +4142,156 @@ export default function PortalIEEEApp({
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[200] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 text-left">
           <div className="bg-white w-full sm:max-w-3xl rounded-t-3xl sm:rounded-3xl p-6 max-h-[92vh] overflow-y-auto shadow-2xl space-y-4">
             
-            {/* Header com Stepper Visual */}
+            {/* Header com Descrição Dinâmica */}
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <div>
                 <h2 className="font-headline font-bold text-xl text-gray-900">Agendar Novo Compromisso</h2>
                 <p className="text-xs text-gray-500">
-                  {etapaAgendamento === 1
-                    ? 'Passo 1 de 2: Defina o contexto, categoria e título da atividade.'
-                    : 'Passo 2 de 2: Selecione o público-alvo e use a PCH para cravar o horário.'}
+                  O formulário se adapta automaticamente conforme o contexto e a categoria escolhida.
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  setModalNovaCapAberto(false)
-                  setEtapaAgendamento(1)
-                }}
+                onClick={() => setModalNovaCapAberto(false)}
                 className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 font-bold flex items-center justify-center shrink-0 cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            {/* Stepper Tabs */}
-            <div className="flex items-center gap-2 bg-gray-50 p-1.5 rounded-xl border border-gray-200 text-xs">
-              <button
-                type="button"
-                onClick={() => setEtapaAgendamento(1)}
-                className={`flex-1 py-1.5 px-3 rounded-lg font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                  etapaAgendamento === 1
-                    ? 'bg-white text-primary shadow-xs border border-blue-100'
-                    : 'text-gray-500 hover:text-gray-800'
-                }`}
-              >
-                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
-                  etapaAgendamento === 1 ? 'bg-primary text-white' : 'bg-gray-200 text-gray-600'
-                }`}>
-                  1
-                </span>
-                <span>Contexto & Categoria</span>
-              </button>
-
-              <span className="text-gray-300">➔</span>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (!formNovoEvento.nome_capacitacao.trim()) {
-                    alert('Por favor, informe o título do compromisso no Passo 1.')
-                    return
+            {/* 1. SELEÇÃO DE CONTEXTO (CARDS GRANDES) */}
+            <div>
+              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1.5">
+                1. Contexto do Compromisso
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div
+                  onClick={() =>
+                    setFormNovoEvento((prev) => ({
+                      ...prev,
+                      contexto: 'Processo Trainee (PSE)',
+                      tipo_evento: configCategoriasPse[0] || 'Capacitação Trainee',
+                    }))
                   }
-                  setEtapaAgendamento(2)
-                }}
-                className={`flex-1 py-1.5 px-3 rounded-lg font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                  etapaAgendamento === 2
-                    ? 'bg-white text-primary shadow-xs border border-blue-100'
-                    : 'text-gray-500 hover:text-gray-800'
-                }`}
-              >
-                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
-                  etapaAgendamento === 2 ? 'bg-primary text-white' : 'bg-gray-200 text-gray-600'
-                }`}>
-                  2
-                </span>
-                <span>Público, PCH & Detalhes</span>
-              </button>
-            </div>
-
-            {/* ================================================================= */}
-            {/* ETAPA 1: CONTEXTO, CATEGORIA E TÍTULO */}
-            {/* ================================================================= */}
-            {etapaAgendamento === 1 && (
-              <div className="space-y-4 text-xs">
-                {/* Seleção do Contexto (Cards Grandes) */}
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1.5">
-                    1. Contexto do Compromisso
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <div
-                      onClick={() =>
-                        setFormNovoEvento((prev) => ({
-                          ...prev,
-                          contexto: 'Processo Trainee (PSE)',
-                          tipo_evento: configCategoriasPse[0] || 'Capacitação Trainee',
-                        }))
-                      }
-                      className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex items-start gap-3 ${
-                        formNovoEvento.contexto === 'Processo Trainee (PSE)'
-                          ? 'bg-blue-50/80 border-primary ring-2 ring-blue-100'
-                          : 'bg-white border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <span className="text-2xl">🎓</span>
-                      <div>
-                        <h4 className="font-headline font-bold text-gray-900 text-xs">Processo Trainee (PSE)</h4>
-                        <p className="text-[11px] text-gray-500 mt-0.5">
-                          Dinâmicas de grupo, capacitações para candidatos e entrevistas individuais.
-                        </p>
-                      </div>
-                    </div>
-
-                    <div
-                      onClick={() =>
-                        setFormNovoEvento((prev) => ({
-                          ...prev,
-                          contexto: 'Ramo Estudantil (Capítulos / Equipes)',
-                          tipo_evento: configCategoriasRamo[0] || 'Capacitação Técnica',
-                        }))
-                      }
-                      className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex items-start gap-3 ${
-                        formNovoEvento.contexto === 'Ramo Estudantil (Capítulos / Equipes)'
-                          ? 'bg-blue-50/80 border-primary ring-2 ring-blue-100'
-                          : 'bg-white border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <span className="text-2xl">🏛️</span>
-                      <div>
-                        <h4 className="font-headline font-bold text-gray-900 text-xs">Ramo Estudantil (Geral)</h4>
-                        <p className="text-[11px] text-gray-500 mt-0.5">
-                          Reuniões gerais de equipes, alinhamentos da diretoria, lideranças e workshops.
-                        </p>
-                      </div>
-                    </div>
+                  className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex items-start gap-3 ${
+                    formNovoEvento.contexto === 'Processo Trainee (PSE)'
+                      ? 'bg-blue-50/80 border-primary ring-2 ring-blue-100'
+                      : 'bg-white border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <span className="text-2xl">🎓</span>
+                  <div>
+                    <h4 className="font-headline font-bold text-gray-900 text-xs">Processo Trainee (PSE)</h4>
+                    <p className="text-[11px] text-gray-500 mt-0.5">
+                      Capacitações com De-Para, Reuniões 360, Dinâmicas e Entrevistas.
+                    </p>
                   </div>
                 </div>
 
-                {/* Categoria do Evento (Dropdown Dinâmico baseado no Contexto) */}
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1.5">
-                    2. Categoria do Evento
-                  </label>
-                  <select
-                    value={formNovoEvento.tipo_evento}
-                    onChange={(e) => setFormNovoEvento({ ...formNovoEvento, tipo_evento: e.target.value })}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-primary"
-                  >
-                    {(formNovoEvento.contexto === 'Processo Trainee (PSE)'
-                      ? configCategoriasPse
-                      : configCategoriasRamo
-                    ).map((cat) => (
-                      <option key={cat} value={cat}>
-                        {cat}
-                      </option>
-                    ))}
-                  </select>
+                <div
+                  onClick={() =>
+                    setFormNovoEvento((prev) => ({
+                      ...prev,
+                      contexto: 'Ramo Estudantil (Capítulos / Equipes)',
+                      tipo_evento: configCategoriasRamo[0] || 'Capacitação Técnica',
+                    }))
+                  }
+                  className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex items-start gap-3 ${
+                    formNovoEvento.contexto === 'Ramo Estudantil (Capítulos / Equipes)'
+                      ? 'bg-blue-50/80 border-primary ring-2 ring-blue-100'
+                      : 'bg-white border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <span className="text-2xl">🏛️</span>
+                  <div>
+                    <h4 className="font-headline font-bold text-gray-900 text-xs">Ramo Estudantil (Geral)</h4>
+                    <p className="text-[11px] text-gray-500 mt-0.5">
+                      Reuniões gerais de equipes, alinhamentos da diretoria e workshops.
+                    </p>
+                  </div>
                 </div>
+              </div>
+            </div>
 
-                {/* Autocomplete de Curso do Catálogo */}
-                <div className="relative">
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1">
-                    Vincular Curso Oficial do Catálogo (Opcional)
-                  </label>
-                  <input
-                    type="text"
-                    value={buscaCatalogoCurso}
-                    onChange={(e) => {
-                      setBuscaCatalogoCurso(e.target.value)
-                      setDropdownCatalogoAberto(true)
-                    }}
-                    onFocus={() => setDropdownCatalogoAberto(true)}
-                    placeholder="Selecione ou busque no catálogo (ex: SolidWorks, Python, Git...)"
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
-                  />
+            {/* 2. BARRA DE CATEGORIAS INTERATIVAS (CHIPS COM ÍCONES) */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block">
+                  2. Categoria do Evento (O Formulário se Modifica Imediatamente)
+                </label>
+                <span className="text-[10px] font-bold text-primary">
+                  Ativa: {formNovoEvento.tipo_evento}
+                </span>
+              </div>
 
-                  {dropdownCatalogoAberto && catalogoCursos.length > 0 && (
-                    <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto z-50 divide-y divide-gray-100">
-                      {catalogoCursos
-                        .filter(
-                          (c) =>
-                            !buscaCatalogoCurso.trim() ||
-                            c.nome_curso.toLowerCase().includes(buscaCatalogoCurso.toLowerCase())
-                        )
-                        .map((curso) => (
-                          <div
-                            key={curso.id}
-                            onClick={() => {
-                              setFormNovoEvento((prev) => ({
-                                ...prev,
-                                id_curso: curso.id,
-                                nome_capacitacao: curso.nome_curso,
-                                equipe_responsavel: curso.equipe_responsavel || 'Geral',
-                              }))
-                              setBuscaCatalogoCurso(curso.nome_curso)
-                              setDropdownCatalogoAberto(false)
-                            }}
-                            className="p-2.5 hover:bg-blue-50 cursor-pointer flex items-center justify-between text-xs"
-                          >
-                            <span className="font-bold text-gray-800">{curso.nome_curso}</span>
-                            <span className="text-[10px] font-mono text-gray-400">
-                              {curso.id} • {curso.equipe_responsavel}
-                            </span>
-                          </div>
-                        ))}
-                    </div>
-                  )}
-                </div>
+              <div className="flex flex-wrap gap-1.5">
+                {(formNovoEvento.contexto === 'Processo Trainee (PSE)'
+                  ? configCategoriasPse
+                  : configCategoriasRamo
+                ).map((cat) => {
+                  const catLower = cat.toLowerCase()
+                  let icon = '📌'
+                  if (catLower.includes('capacita')) icon = '🎓'
+                  else if (catLower.includes('360')) icon = '🔄'
+                  else if (catLower.includes('dinam')) icon = '🤝'
+                  else if (catLower.includes('entrevis')) icon = '🎙️'
+                  else if (catLower.includes('follow')) icon = '📋'
+                  else if (catLower.includes('equipe')) icon = '🏢'
+                  else if (catLower.includes('assembleia')) icon = '🏛️'
+                  else if (catLower.includes('1:1') || catLower.includes('alinhamento')) icon = '💬'
 
+                  const isAtiva = formNovoEvento.tipo_evento === cat
+
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() =>
+                        setFormNovoEvento((prev) => ({
+                          ...prev,
+                          tipo_evento: cat,
+                        }))
+                      }
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                        isAtiva
+                          ? 'bg-primary text-white border-primary shadow-sm ring-2 ring-blue-200'
+                          : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200'
+                      }`}
+                    >
+                      <span>{icon}</span>
+                      <span>{cat}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* 3. CORPO ADAPTATIVO DO FORMULÁRIO */}
+            {formNovoEvento.contexto === 'Processo Trainee (PSE)' ? (
+              <FormularioContextoPse
+                tipoEvento={formNovoEvento.tipo_evento}
+                formNovoEvento={formNovoEvento}
+                setFormNovoEvento={setFormNovoEvento}
+                usuario={usuario}
+                todosMembros={todosMembrosPch}
+                pchsPorMembro={pchsPorMembro}
+                catalogoCursos={catalogoCursos}
+                configSalas={configSalas}
+                eventosExistentes={eventosAgenda}
+                onAtualizarParticipantes={(parts) =>
+                  setPublicoConfig((prev) => ({
+                    ...prev,
+                    modo: 'personalizado',
+                    membros_especificos: parts.map((p) => p.matricula),
+                  }))
+                }
+              />
+            ) : (
+              <div className="space-y-4 text-xs">
                 {/* Título do Evento */}
                 <div>
                   <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1">
-                    3. Título / Nome da Atividade *
+                    Título Oficial da Atividade *
                   </label>
                   <input
                     type="text"
@@ -4344,293 +4304,192 @@ export default function PortalIEEEApp({
                   />
                 </div>
 
-                {/* Equipe Responsável */}
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1">
-                    Equipe Responsável pela Organização
-                  </label>
-                  <input
-                    type="text"
-                    value={formNovoEvento.equipe_responsavel}
-                    onChange={(e) =>
-                      setFormNovoEvento({ ...formNovoEvento, equipe_responsavel: e.target.value })
-                    }
-                    placeholder="Ex: Gestão de Pessoas, Robótica, Marketing, Presidência..."
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
-                  />
-                </div>
+                {/* 1. SELETOR GRANULAR DE PÚBLICO-ALVO (4 DIMENSÕES) */}
+                <SeletorPublico
+                  config={publicoConfig}
+                  onChange={setPublicoConfig}
+                  todosMembros={todosMembrosPch}
+                  usuarioAtual={{
+                    id: usuario.id,
+                    matricula: usuario.matricula,
+                    nome: usuario.nome,
+                    equipe: usuario.cargos[0]?.split('•')[1]?.trim() || 'Geral',
+                    cargo: usuario.cargos[0]?.split('•')[0]?.trim() || 'Membro',
+                    nivelAcesso: usuario.tipo_membro === 'Trainee' ? 'TRAINEE' : 'MEMBRO',
+                  }}
+                  participantesResolvidos={participantesResolvidos}
+                />
 
-                {/* Botões do Passo 1 */}
-                <div className="flex gap-2 pt-3 border-t border-gray-100">
-                  <button
-                    type="button"
-                    onClick={() => setModalNovaCapAberto(false)}
-                    className="flex-1 py-3 bg-gray-100 font-bold rounded-xl text-gray-600 hover:bg-gray-200 cursor-pointer"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!formNovoEvento.nome_capacitacao.trim()) {
-                        alert('Informe o título do evento para prosseguir.')
-                        return
-                      }
-                      setEtapaAgendamento(2)
-                    }}
-                    className="flex-1 py-3 bg-primary text-white font-extrabold rounded-xl hover:bg-blue-700 shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                  >
-                    <span>Avançar para Público & Horários</span>
-                    <span>➔</span>
-                  </button>
-                </div>
-              </div>
-            )}
+                {/* 2. MOTOR DE RECOMENDAÇÃO PCH ("SLOTS DE OURO") */}
+                <PainelRecomendacaoPCH
+                  slots={slotsRecomendados}
+                  modalidade={formNovoEvento.modalidade}
+                  totalParticipantes={participantesResolvidos.length}
+                  isCalculando={isCarregandoPchMembros}
+                  onSelecionarSlot={(slot) => {
+                    setFormNovoEvento((prev) => ({
+                      ...prev,
+                      data: slot.dataSugerida,
+                      hora_inicio: slot.horarioInicio,
+                      hora_fim: slot.horarioFim,
+                    }))
+                  }}
+                  onAbrirGradeCompleta={() => {
+                    setActiveTab('disponibilidade')
+                    setModalNovaCapAberto(false)
+                  }}
+                />
 
-            {/* ================================================================= */}
-            {/* ETAPA 2: PÚBLICO-ALVO, CRビZAMENTO PCH E CONFIRMAÇÃO */}
-            {/* ================================================================= */}
-            {etapaAgendamento === 2 && (
-              <div className="space-y-4 text-xs">
-                {/* Banner Resumo do Passo 1 */}
-                <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-xl flex items-center justify-between">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[10px] font-bold uppercase text-blue-800">
-                      {formNovoEvento.contexto} • {formNovoEvento.tipo_evento}
+                {/* 3. CONFIRMAÇÃO DE DATA, HORÁRIOS E LOCAL */}
+                <div className="bg-white border border-gray-200 rounded-2xl p-4 space-y-3">
+                  <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">
+                    Horário & Local do Compromisso
+                  </h4>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Data *</label>
+                      <input
+                        type="date"
+                        value={formNovoEvento.data}
+                        onChange={(e) => setFormNovoEvento({ ...formNovoEvento, data: e.target.value })}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                      />
                     </div>
-                    <div className="font-bold text-gray-900 text-xs truncate">
-                      {formNovoEvento.nome_capacitacao}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setEtapaAgendamento(1)}
-                    className="text-[11px] font-bold text-primary hover:underline ml-2 shrink-0 cursor-pointer"
-                  >
-                    Alterar Dados ✎
-                  </button>
-                </div>
-
-                {/* RENDERIZAÇÃO CONDICIONAL POR CONTEXTO */}
-                {formNovoEvento.contexto === 'Processo Trainee (PSE)' ? (
-                  <FormularioContextoPse
-                    tipoEvento={formNovoEvento.tipo_evento}
-                    formNovoEvento={formNovoEvento}
-                    setFormNovoEvento={setFormNovoEvento}
-                    usuario={usuario}
-                    todosMembros={todosMembrosPch}
-                    pchsPorMembro={pchsPorMembro}
-                    catalogoCursos={catalogoCursos}
-                    configSalas={configSalas}
-                    eventosExistentes={eventosAgenda}
-                    onAtualizarParticipantes={(parts) =>
-                      setPublicoConfig((prev) => ({
-                        ...prev,
-                        modo: 'personalizado',
-                        membros_especificos: parts.map((p) => p.matricula),
-                      }))
-                    }
-                  />
-                ) : (
-                  <>
-                    {/* 1. SELETOR GRANULAR DE PÚBLICO-ALVO (4 DIMENSÕES) */}
-                    <SeletorPublico
-                      config={publicoConfig}
-                      onChange={setPublicoConfig}
-                      todosMembros={todosMembrosPch}
-                      usuarioAtual={{
-                        id: usuario.id,
-                        matricula: usuario.matricula,
-                        nome: usuario.nome,
-                        equipe: usuario.cargos[0]?.split('•')[1]?.trim() || 'Geral',
-                        cargo: usuario.cargos[0]?.split('•')[0]?.trim() || 'Membro',
-                        nivelAcesso: usuario.tipo_membro === 'Trainee' ? 'TRAINEE' : 'MEMBRO',
-                      }}
-                      participantesResolvidos={participantesResolvidos}
-                    />
-
-                    {/* 2. MOTOR DE RECOMENDAÇÃO PCH ("SLOTS DE OURO") */}
-                    <PainelRecomendacaoPCH
-                      slots={slotsRecomendados}
-                      modalidade={formNovoEvento.modalidade}
-                      totalParticipantes={participantesResolvidos.length}
-                      isCalculando={isCarregandoPchMembros}
-                      onSelecionarSlot={(slot) => {
-                        setFormNovoEvento((prev) => ({
-                          ...prev,
-                          data: slot.dataSugerida,
-                          hora_inicio: slot.horarioInicio,
-                          hora_fim: slot.horarioFim,
-                        }))
-                      }}
-                      onAbrirGradeCompleta={() => {
-                        setActiveTab('disponibilidade')
-                        setModalNovaCapAberto(false)
-                      }}
-                    />
-
-                    {/* 3. CONFIRMAÇÃO DE DATA, HORÁRIOS E LOCAL */}
-                    <div className="bg-white border border-gray-200 rounded-2xl p-4 space-y-3">
-                      <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">
-                        Horário & Local do Compromisso
-                      </h4>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Data *</label>
-                          <input
-                            type="date"
-                            value={formNovoEvento.data}
-                            onChange={(e) => setFormNovoEvento({ ...formNovoEvento, data: e.target.value })}
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                            Início / Fim *
-                          </label>
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="text"
-                              value={formNovoEvento.hora_inicio}
-                              onChange={(e) =>
-                                setFormNovoEvento({ ...formNovoEvento, hora_inicio: e.target.value })
-                              }
-                              placeholder="14:00"
-                              className="w-1/2 bg-gray-50 border border-gray-200 rounded-xl p-2 text-xs font-bold text-center outline-none focus:ring-2 focus:ring-primary"
-                            />
-                            <span className="text-gray-400">-</span>
-                            <input
-                              type="text"
-                              value={formNovoEvento.hora_fim}
-                              onChange={(e) =>
-                                setFormNovoEvento({ ...formNovoEvento, hora_fim: e.target.value })
-                              }
-                              placeholder="16:00"
-                              className="w-1/2 bg-gray-50 border border-gray-200 rounded-xl p-2 text-xs font-bold text-center outline-none focus:ring-2 focus:ring-primary"
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Modalidade</label>
-                          <select
-                            value={formNovoEvento.modalidade}
-                            onChange={(e) =>
-                              setFormNovoEvento({
-                                ...formNovoEvento,
-                                modalidade: e.target.value as any,
-                                local_link:
-                                  e.target.value === 'Presencial'
-                                    ? configSalas[0] || 'E-213 - Sala do Ramo'
-                                    : 'https://teams.microsoft.com',
-                              })
-                            }
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
-                          >
-                            <option value="Presencial">Presencial</option>
-                            <option value="Online">Online</option>
-                            <option value="Gravada">Gravada</option>
-                            <option value="Híbrido">Híbrido</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                            {formNovoEvento.modalidade === 'Presencial' ? 'Sala Física (Local) *' : 'Link da Reunião Online *'}
-                          </label>
-                          {formNovoEvento.modalidade === 'Presencial' ? (
-                            <select
-                              value={formNovoEvento.local_link}
-                              onChange={(e) =>
-                                setFormNovoEvento({ ...formNovoEvento, local_link: e.target.value })
-                              }
-                              className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-primary"
-                            >
-                              {configSalas.map((sala) => (
-                                <option key={sala} value={sala}>
-                                  {sala}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <input
-                              type="text"
-                              value={formNovoEvento.local_link}
-                              onChange={(e) =>
-                                setFormNovoEvento({ ...formNovoEvento, local_link: e.target.value })
-                              }
-                              placeholder="Ex: https://teams.microsoft.com/... ou Google Meet"
-                              className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
-                            />
-                          )}
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                            Facilitador(es) / Ministrante(s)
-                          </label>
-                          <input
-                            type="text"
-                            value={formNovoEvento.ministrantes}
-                            onChange={(e) =>
-                              setFormNovoEvento({ ...formNovoEvento, ministrantes: e.target.value })
-                            }
-                            placeholder="Nomes separados por vírgula"
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Pauta / Descrição */}
-                      <div>
-                        <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
-                          Pauta / Descrição do Compromisso (Opcional)
-                        </label>
-                        <textarea
-                          value={formNovoEvento.descricao}
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                        Início / Fim *
+                      </label>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          value={formNovoEvento.hora_inicio}
                           onChange={(e) =>
-                            setFormNovoEvento({ ...formNovoEvento, descricao: e.target.value })
+                            setFormNovoEvento({ ...formNovoEvento, hora_inicio: e.target.value })
                           }
-                          placeholder="Detalhes, objetivos da reunião, materiais prévios..."
-                          className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
-                          rows={2}
+                          placeholder="14:00"
+                          className="w-1/2 bg-gray-50 border border-gray-200 rounded-xl p-2 text-xs font-bold text-center outline-none focus:ring-2 focus:ring-primary"
+                        />
+                        <span className="text-gray-400">-</span>
+                        <input
+                          type="text"
+                          value={formNovoEvento.hora_fim}
+                          onChange={(e) =>
+                            setFormNovoEvento({ ...formNovoEvento, hora_fim: e.target.value })
+                          }
+                          placeholder="16:00"
+                          className="w-1/2 bg-gray-50 border border-gray-200 rounded-xl p-2 text-xs font-bold text-center outline-none focus:ring-2 focus:ring-primary"
                         />
                       </div>
                     </div>
-                  </>
-                )}
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Modalidade</label>
+                      <select
+                        value={formNovoEvento.modalidade}
+                        onChange={(e) =>
+                          setFormNovoEvento({
+                            ...formNovoEvento,
+                            modalidade: e.target.value as any,
+                            local_link:
+                              e.target.value === 'Presencial'
+                                ? configSalas[0] || 'E-213 - Sala do Ramo'
+                                : 'https://teams.microsoft.com',
+                          })
+                        }
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary"
+                      >
+                        <option value="Presencial">Presencial</option>
+                        <option value="Online">Online</option>
+                        <option value="Gravada">Gravada</option>
+                        <option value="Híbrido">Híbrido</option>
+                      </select>
+                    </div>
+                  </div>
 
-                {/* Botões do Passo 2 */}
-                <div className="flex gap-2 pt-3 border-t border-gray-100">
-                  <button
-                    type="button"
-                    onClick={() => setEtapaAgendamento(1)}
-                    className="px-4 py-3 bg-gray-100 font-bold rounded-xl text-gray-700 hover:bg-gray-200 cursor-pointer"
-                  >
-                    ⬅ Voltar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setModalNovaCapAberto(false)
-                      setEtapaAgendamento(1)
-                    }}
-                    className="px-4 py-3 bg-gray-100 font-bold rounded-xl text-gray-600 hover:bg-gray-200 cursor-pointer"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSalvarNovoEvento}
-                    disabled={isSalvandoEvento}
-                    className="flex-1 py-3 bg-primary text-white font-extrabold rounded-xl hover:bg-blue-700 shadow-md transition-all cursor-pointer disabled:opacity-50"
-                  >
-                    {isSalvandoEvento ? 'Agendando...' : 'Confirmar Agendamento'}
-                  </button>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                        {formNovoEvento.modalidade === 'Presencial' ? 'Sala Física (Local) *' : 'Link da Reunião Online *'}
+                      </label>
+                      {formNovoEvento.modalidade === 'Presencial' ? (
+                        <select
+                          value={formNovoEvento.local_link}
+                          onChange={(e) =>
+                            setFormNovoEvento({ ...formNovoEvento, local_link: e.target.value })
+                          }
+                          className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-primary"
+                        >
+                          {configSalas.map((sala) => (
+                            <option key={sala} value={sala}>
+                              {sala}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={formNovoEvento.local_link}
+                          onChange={(e) =>
+                            setFormNovoEvento({ ...formNovoEvento, local_link: e.target.value })
+                          }
+                          placeholder="Ex: https://teams.microsoft.com/... ou Google Meet"
+                          className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
+                        />
+                      )}
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                        Facilitador(es) / Ministrante(s)
+                      </label>
+                      <input
+                        type="text"
+                        value={formNovoEvento.ministrantes}
+                        onChange={(e) =>
+                          setFormNovoEvento({ ...formNovoEvento, ministrantes: e.target.value })
+                        }
+                        placeholder="Nomes separados por vírgula"
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Pauta / Descrição */}
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">
+                      Pauta / Descrição do Compromisso (Opcional)
+                    </label>
+                    <textarea
+                      value={formNovoEvento.descricao}
+                      onChange={(e) =>
+                        setFormNovoEvento({ ...formNovoEvento, descricao: e.target.value })
+                      }
+                      placeholder="Detalhes, objetivos da reunião, materiais prévios..."
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary"
+                      rows={2}
+                    />
+                  </div>
                 </div>
               </div>
             )}
+
+            {/* 4. BOTÕES DE AÇÃO DO MODAL */}
+            <div className="flex gap-2 pt-3 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setModalNovaCapAberto(false)}
+                className="px-5 py-3 bg-gray-100 font-bold rounded-xl text-gray-600 hover:bg-gray-200 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSalvarNovoEvento}
+                disabled={isSalvandoEvento}
+                className="flex-1 py-3 bg-primary text-white font-extrabold rounded-xl hover:bg-blue-700 shadow-md transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isSalvandoEvento ? 'Agendando...' : 'Confirmar Agendamento'}
+              </button>
+            </div>
 
           </div>
         </div>

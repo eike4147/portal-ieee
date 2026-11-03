@@ -857,11 +857,10 @@ const CONFIG_CAT_RAMO_PADRAO = [
 
 const CONFIG_CAT_PSE_PADRAO = [
   'Capacitação Trainee',
+  'Reunião 360',
   'Dinâmica em Grupo',
   'Entrevista Individual',
   'Follow Up Trainee',
-  'Avaliação 360',
-  'Encontro de Integração',
 ]
 
 export async function obterConfiguracoesAgendaAction(): Promise<{
