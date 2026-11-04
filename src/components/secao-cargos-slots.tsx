@@ -127,8 +127,22 @@ export default function SecaoCargosSlots({ cargosIniciaisUsuario }: SecaoCargosS
   // Contagem de slots ativos
   const slotsOcupadosCount = slots.filter((s) => s.status === 'ativo').length
 
+  // Validação essencial: Slots 1, 2 e 3 devem estar totalmente preenchidos antes de abrir slots 4, 5 etc.
+  const slots123Preenchidos = [1, 2, 3].every((num) => {
+    const s = slots.find((item) => item.slot === num)
+    return s && s.status === 'ativo' && Boolean(s.idCargo || s.cargoNome)
+  })
+
   // Iniciar edição/adição em um slot com auto-detecção dos 4 níveis
   const handleIniciarEdicaoSlot = (slotNumero: number) => {
+    if (slotNumero >= 4 && !slots123Preenchidos) {
+      setFeedback({
+        tipo: 'aviso',
+        texto: `Os slots 1, 2 e 3 devem estar totalmente preenchidos antes de configurar o Slot ${slotNumero}.`,
+      })
+      return
+    }
+
     const slotAtual = slots.find((s) => s.slot === slotNumero)
     setSlotEmEdicao(slotNumero)
 
@@ -301,6 +315,15 @@ export default function SecaoCargosSlots({ cargosIniciaisUsuario }: SecaoCargosS
 
   // Enviar proposta de movimentação para a GP
   const handleEnviarMovimentacaoGP = () => {
+    const slotsExtrasAtivos = slots.filter((s) => s.slot >= 4 && s.status === 'ativo')
+    if (slotsExtrasAtivos.length > 0 && !slots123Preenchidos) {
+      setFeedback({
+        tipo: 'erro',
+        texto: 'Os slots 1, 2 e 3 devem estar totalmente preenchidos antes de alocar ou movimentar cargos para os slots extras (4 ou 5).',
+      })
+      return
+    }
+
     startTransition(async () => {
       const res = await submeterMovimentacaoSlotsAction(
         cargosAtuaisFormatados,
@@ -318,6 +341,13 @@ export default function SecaoCargosSlots({ cargosIniciaisUsuario }: SecaoCargosS
 
   // Abrir modal de desbloqueio de slot 4 ou 5
   const handleAbrirDesbloqueio = (slotNum: number) => {
+    if (slotNum >= 4 && !slots123Preenchidos) {
+      setFeedback({
+        tipo: 'aviso',
+        texto: `Os slots 1, 2 e 3 devem estar totalmente preenchidos antes de solicitar a liberação do Slot ${slotNum}.`,
+      })
+      return
+    }
     setSlotParaDesbloquear(slotNum)
     setJustificativaDesbloqueio('')
     setModalDesbloqueioAberto(true)
@@ -325,6 +355,15 @@ export default function SecaoCargosSlots({ cargosIniciaisUsuario }: SecaoCargosS
 
   // Submeter pedido de desbloqueio de slot extra
   const handleSubmeterDesbloqueio = () => {
+    if (!slots123Preenchidos) {
+      setFeedback({
+        tipo: 'erro',
+        texto: 'Os slots 1, 2 e 3 precisam estar preenchidos para solicitar a liberação de slots adicionais.',
+      })
+      setModalDesbloqueioAberto(false)
+      return
+    }
+
     if (!justificativaDesbloqueio || justificativaDesbloqueio.trim().length < 10) {
       setFeedback({
         tipo: 'erro',
@@ -481,6 +520,8 @@ export default function SecaoCargosSlots({ cargosIniciaisUsuario }: SecaoCargosS
 
             // CARD BLOQUEADO (SLOTS 4 E 5)
             if (isBloqueado) {
+              const podePedirDesbloqueio = !isPending && !solicitacaoPendente && slots123Preenchidos
+
               return (
                 <div
                   key={item.slot}
@@ -497,22 +538,30 @@ export default function SecaoCargosSlots({ cargosIniciaisUsuario }: SecaoCargosS
                       </span>
                     </div>
 
-                    <div className="pt-2 text-center py-3">
+                    <div className="pt-2 text-center py-2">
                       <span className="material-symbols-outlined text-3xl text-slate-400 block mb-1">
                         lock_clock
                       </span>
-                      <p className="font-bold text-xs text-slate-700">Slot 4 ou 5 Excepcional</p>
+                      <p className="font-bold text-xs text-slate-700">Slot {item.slot} Excepcional</p>
                       <p className="text-[10px] text-slate-500 mt-0.5">
                         Exige aprovação prévia da Diretoria de Gestão de Pessoas (GP).
                       </p>
                     </div>
+
+                    {!slots123Preenchidos && (
+                      <div className="p-2 bg-amber-50/90 border border-amber-200 rounded-xl text-[10px] text-amber-800 flex items-center gap-1.5 font-medium leading-tight">
+                        <span className="material-symbols-outlined text-xs text-amber-600 shrink-0">info</span>
+                        <span>Preencha os Slots 1, 2 e 3 para liberar este pedido.</span>
+                      </div>
+                    )}
                   </div>
 
                   <button
                     type="button"
-                    disabled={isPending || !!solicitacaoPendente}
+                    disabled={!podePedirDesbloqueio}
                     onClick={() => handleAbrirDesbloqueio(item.slot)}
-                    className="w-full py-2 bg-slate-200 hover:bg-blue-600 hover:text-white text-slate-700 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                    title={!slots123Preenchidos ? 'Preencha os slots 1, 2 e 3 antes de solicitar liberação' : undefined}
+                    className="w-full py-2 bg-slate-200 hover:bg-blue-600 hover:text-white text-slate-700 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <span className="material-symbols-outlined text-sm">key</span>
                     <span>Solicitar Liberação à GP</span>
@@ -672,6 +721,9 @@ export default function SecaoCargosSlots({ cargosIniciaisUsuario }: SecaoCargosS
 
             // SLOT VAZIO (DISPONÍVEL)
             if (isVazio) {
+              const bloqueadoPorFaltaAnteriores = item.slot >= 4 && !slots123Preenchidos
+              const podeAdicionar = !isPending && !solicitacaoPendente && !bloqueadoPorFaltaAnteriores
+
               return (
                 <div
                   key={item.slot}
@@ -682,28 +734,48 @@ export default function SecaoCargosSlots({ cargosIniciaisUsuario }: SecaoCargosS
                       <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                         {rotuloSlot}
                       </span>
-                      <span className="text-[10px] bg-slate-100 text-slate-500 font-bold px-2 py-0.5 rounded-full">
-                        Disponível
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          bloqueadoPorFaltaAnteriores
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-slate-100 text-slate-500'
+                        }`}
+                      >
+                        {bloqueadoPorFaltaAnteriores ? 'Aguardando Slots 1, 2 e 3' : 'Disponível'}
                       </span>
                     </div>
 
-                    <div className="pt-2 text-center py-3">
+                    <div className="pt-2 text-center py-2">
                       <span className="material-symbols-outlined text-3xl text-slate-300 block mb-1">
-                        add_circle
+                        {bloqueadoPorFaltaAnteriores ? 'lock' : 'add_circle'}
                       </span>
                       <p className="font-bold text-xs text-slate-700">Slot Livre</p>
-                      <p className="text-[10px] text-slate-400">Você pode adicionar mais uma função aqui.</p>
+                      <p className="text-[10px] text-slate-400">
+                        {bloqueadoPorFaltaAnteriores
+                          ? 'Preencha primeiro os slots 1, 2 e 3 para poder alocar este cargo.'
+                          : 'Você pode adicionar mais uma função aqui.'}
+                      </p>
                     </div>
+
+                    {bloqueadoPorFaltaAnteriores && (
+                      <div className="p-2 bg-amber-50/90 border border-amber-200 rounded-xl text-[10px] text-amber-800 flex items-center gap-1.5 font-medium leading-tight">
+                        <span className="material-symbols-outlined text-xs text-amber-600 shrink-0">lock</span>
+                        <span>Disponível apenas após preencher os Slots 1, 2 e 3.</span>
+                      </div>
+                    )}
                   </div>
 
                   <button
                     type="button"
-                    disabled={isPending || !!solicitacaoPendente}
+                    disabled={!podeAdicionar}
                     onClick={() => handleIniciarEdicaoSlot(item.slot)}
-                    className="w-full py-2 bg-blue-50 hover:bg-blue-600 text-blue-700 hover:text-white border border-blue-200 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                    title={bloqueadoPorFaltaAnteriores ? 'Preencha os slots 1, 2 e 3 primeiro' : undefined}
+                    className="w-full py-2 bg-blue-50 hover:bg-blue-600 text-blue-700 hover:text-white border border-blue-200 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <span className="material-symbols-outlined text-sm">add</span>
-                    <span>Adicionar Cargo</span>
+                    <span className="material-symbols-outlined text-sm">
+                      {bloqueadoPorFaltaAnteriores ? 'lock' : 'add'}
+                    </span>
+                    <span>{bloqueadoPorFaltaAnteriores ? 'Requer Slots 1, 2 e 3' : 'Adicionar Cargo'}</span>
                   </button>
                 </div>
               )

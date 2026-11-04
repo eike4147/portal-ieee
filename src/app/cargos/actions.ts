@@ -296,6 +296,23 @@ export async function solicitarDesbloqueioSlotAction(
       return { sucesso: false, mensagem: 'Usuário não autenticado.' }
     }
 
+    // Regra: Os slots 1, 2 e 3 precisam estar preenchidos para abrir slots 4 ou 5
+    if (slotNumero >= 4) {
+      const { data: usuarioCargos } = await supabase
+        .from('usuario_cargos')
+        .select('cargo_id')
+        .eq('usuario_id', user.id)
+
+      const qtdCargosAtivos = usuarioCargos?.length || 0
+      if (qtdCargosAtivos < 3) {
+        return {
+          sucesso: false,
+          mensagem:
+            'Os slots 1, 2 e 3 devem estar totalmente preenchidos antes de solicitar a liberação de slots extras (4 ou 5).',
+        }
+      }
+    }
+
     const agora = new Date().toISOString()
 
     const { error } = await supabase.from('solicitacoes_movimentacao').insert({
