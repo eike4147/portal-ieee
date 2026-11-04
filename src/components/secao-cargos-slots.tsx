@@ -626,7 +626,7 @@ export default function SecaoCargosSlots({ cargosIniciaisUsuario }: SecaoCargosS
                       >
                         {cargosFinaisDisponiveis.map((c) => (
                           <option key={c.id} value={c.id}>
-                            {c.cargo} (Peso {c.peso.toFixed(1)}) • {c.nivelAcesso}
+                            {c.cargo}
                           </option>
                         ))}
                       </select>
